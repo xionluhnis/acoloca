@@ -1,2 +1,4 @@
-# acoloca
-Acoustic Localization with the nRF52
+# AcoLoca
+Acoustic Localization with the nRF52.
+
+

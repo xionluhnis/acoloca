@@ -21,12 +21,15 @@ chirps4 = dlmread('data/chirps_new2.log');
 chirps5 = dlmread('data/chirps_new3.log');
 
 data = { ambiant, chirps, chirps2, chirps3, chirps4, chirps5 };
-spec = cell(numel(data), 1);
+spec = cell(numel(data), 2);
 name = { 'ambiant', 'chirps', 'chirps2', 'chirps3', 'chirps4', 'chirps5' };
 
 for i = 1:numel(data)
-    s = spectrogram(normalize(data{i}, 500), 128);
+    s = spectrogram(data{i}, 128);
+    s2 = spectrogram(normalize(data{i}, 3), 128);
     imagesc(abs(s));
-    imwrite(labelize(abs(s)), parula, [name{i} '.png']);
-    spec{i} = abs(s);
+    imagesc(abs(s2));
+    imwrite(labelize(abs(s2)), parula, [name{i} '.png']);
+    spec{i, 1} = abs(s);
+    spec{i, 2} = abs(s2);
 end

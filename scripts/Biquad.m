@@ -1,4 +1,4 @@
-classdef BiQuad < handle
+classdef Biquad < handle
    
     properties (Constant)
         LOWPASS = 0
@@ -19,7 +19,7 @@ classdef BiQuad < handle
     end
     
     methods
-        function self = BiQuad(type, freq, srate, Q, dbGain)
+        function self = Biquad(type, freq, srate, Q, dbGain)
             
             freq = single(freq);
             self.srate = single(srate);
@@ -35,19 +35,19 @@ classdef BiQuad < handle
             beta = sqrt(A + A);
             
             switch type
-                case BiQuad.LOWPASS
+                case Biquad.LOWPASS
                     self.lowpass(cs, alpha);
-                case BiQuad.HIGHPASS
+                case Biquad.HIGHPASS
                     self.highpass(cs, alpha);
-                case BiQuad.BANDPASS
+                case Biquad.BANDPASS
                     self.bandpass(cs, alpha);
-                case BiQuad.NOTCH
+                case Biquad.NOTCH
                     self.notch(cs, alpha);
-                case BiQuad.PEAK
+                case Biquad.PEAK
                     self.peak(A, cs, alpha);
-                case BiQuad.LOWSHELF
+                case Biquad.LOWSHELF
                     self.lowshelf(A, sn, cs, beta);
-                case BiQuad.HIGHSHELF
+                case Biquad.HIGHSHELF
                     self.highshelf(A, sn, cs, beta);
                 otherwise
                     error('Invalid type %d', type)
@@ -109,12 +109,19 @@ classdef BiQuad < handle
             ];
         end
         
-        function y = subsindex(self, x)
-            %y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2
-            y = self.B .* [x, self.x] - self.A(2:3) .* self.y;
-            % shift memory
-            self.x = [x, self.x(1)];
-            self.y = [y, self.y(1)];
+        function Y = filter(self, X)
+            assert(isnumeric(X), 'Filter arguments must be numeric');
+            assert(numel(size(X)) == 2, 'No N-D argument');
+            Y = nan(size(X, 1), size(X, 2));
+            for i = 1:numel(X)
+                x = X(i);
+                %y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2 - self.a1 * self.y1 - self.a2 * self.y2
+                y = sum(self.B .* [x, self.x]) - sum(self.A(2:3) .* self.y);
+                Y(i) = y;
+                % shift memory
+                self.x = [x, self.x(1)];
+                self.y = [y, self.y(1)];
+            end
         end
         
         function v = result(self, f)
@@ -144,6 +151,11 @@ classdef BiQuad < handle
         
         function C = constants(self)
             C = [self.B, self.A(2:3)];
+        end
+        
+        function self = reset(self)
+            self.x = [0, 0];
+            self.y = [0, 0];
         end
     end
 end

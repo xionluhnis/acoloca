@@ -5,14 +5,14 @@ ori = dlmread('data/chirps_new3.log');
 ori = dlmread('data/chirp_1.5k.log');
 % subsample
 src = (ori-350)/200;
-src = src(7e4:12e4);
+% src = src(7e4:12e4);
 ori = ori(end-numel(src)+1:end);
 
 %src = normalize(ori); % idealized
 %ori = ori(end-numel(src)+1:end);
 % src = Biquad(Biquad.HIGHPASS, 500, 1e4, 1).filter(src);
-[B, A] = butter(3, [0.2, 0.4], 'bandpass');
-src = filter(B, A, src);
+%[B, A] = butter(3, [0.2, 0.4], 'bandpass');
+%src = filter(B, A, src);
 ori = ori(end-numel(src)+1:end);
 
 %src = src .* (abs(src) > 0.1);
@@ -32,7 +32,7 @@ ori = ori(end-numel(src)+1:end);
 %% Matlab implementation
 
 % sample_rate = 0.86575e4; % from average timed serial reading
-sample_rate = 0.87e4; % from average timed serial reading
+sample_rate = 0.9e4; % from average timed serial reading
 
 f_start = 1500;
 f_end   = 1500;
@@ -43,16 +43,16 @@ old_ref1 = 0;
 old_ref2 = 0;
 old_pll_lock = 0;
 pll_cf = 1500;
-pll_loop_gain = 0.05;
+pll_loop_gain = 1;
 ref_sig = 0;
 ref_idx = 1;
 
 invsqr2 = 1.0 / sqrt(2.0);
 
-loop_lowpass = Biquad(Biquad.LOWPASS, 100, sample_rate, invsqr2);
+loop_lowpass = Biquad(Biquad.LOWPASS, 1000, sample_rate, invsqr2);
 output_lowpass = Biquad(Biquad.IDENTITY, 100, sample_rate, invsqr2);
-lock_lowpass1 = Biquad(Biquad.LOWPASS, 100, sample_rate, invsqr2);
-lock_lowpass2 = Biquad(Biquad.LOWPASS, 100, sample_rate, invsqr2);
+lock_lowpass1 = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
+lock_lowpass2 = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
 
 % output for visualization
 N = numel(src);
@@ -79,7 +79,7 @@ for i = 1:N
     
     % FM integral
     pll_integral = pll_integral + pll_loop_control / sample_rate;
-    pll_integral = 0;
+    % pll_integral = 0;
     
     % reference signal
     ref_ph = 2 * pi * pll_cf * (t + pll_integral);
@@ -97,10 +97,11 @@ for i = 1:N
     % logic lock uses four different phases
     logic_lock = max(abs(pll_lock1), abs(pll_lock2)) > 0.2; % thresholding
     
-    data(i, 1) = output - 1;
+    data(i, 1) = output - 0.5;
     data(i, 2) = pll_lock1;
     data(i, 3) = pll_lock2;
     data(i, 4) = logic_lock;
+    data(i, 5) = pll_integral;
 end
 
 x = reshape(1:N, [], 1);
@@ -108,16 +109,10 @@ p = plotyy(x, src, repmat(x, 1, size(data, 2)), data);
 
 p(1).Children(1).Color = 0.8 * [1 1 1];
 p(1).YLim = [-1 1];
-p(2).YLim = [-1 1] * min(abs(p(2).YLim));
-cols = [
-    1, 0.6, 0.3;
-    0.3, 1, 0.6;
-    0.3, 0.6, 1;
-    0.6, 0.3, 1;
-    1, 0.3, 0.6;
-    0.6, 1, 0.3;
-    1.2, 1.2, 0.6
-] * 0.7;
+p(2).YLim = [-1 1]; % * min(abs(p(2).YLim));
+p(2).YTickMode = 'auto';
+p(2).YGrid = 'on';
+
 cols = parula(size(data, 2));
 for i = 1:numel(p(2).Children)
     l = p(2).Children(i);

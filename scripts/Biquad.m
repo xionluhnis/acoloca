@@ -8,6 +8,7 @@ classdef Biquad < handle
         PEAK = 4
         LOWSHELF = 5
         HIGHSHELF = 6
+        IDENTITY = 7
     end
     
     properties
@@ -53,6 +54,9 @@ classdef Biquad < handle
                     self.lowshelf(A, sn, cs, beta);
                 case Biquad.HIGHSHELF
                     self.highshelf(A, sn, cs, beta);
+                case Biquad.IDENTITY
+                    self.A = [1, 0, 0];
+                    self.B = [1, 0, 0];
                 otherwise
                     error('Invalid type %d', type)
             end

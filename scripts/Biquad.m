@@ -24,7 +24,11 @@ classdef Biquad < handle
             freq = single(freq);
             self.srate = single(srate);
             Q = single(Q);
-            dbGain = single(dbGain);
+            if exist('dbGain', 'var')
+                dbGain = single(dbGain);
+            else
+                dbGain = single(0);
+            end
             
             % parameters
             A = 10 ^ (dbGain / 40);

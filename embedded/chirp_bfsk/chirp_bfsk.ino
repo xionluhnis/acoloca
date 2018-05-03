@@ -25,7 +25,8 @@ typedef struct Chirp {
   const double  ref_clk;
   const double  n_samples;
   const double  ref_period;
-  const unsigned long tuning_word[2];
+  const unsigned long tuning_word_0;
+  const unsigned long tuning_word_1;
   volatile unsigned long phaccu;
   // pwm cycle information
   const uint16_t     cycle_period;
@@ -36,23 +37,26 @@ typedef struct Chirp {
   const uint32_t  duration_off; 
   const uint32_t  duration;
   // fsk pulses
-  const uint16_t   fsk_code;
+  const uint32_t   fsk_code;
+  const uint8_t    fsk_code_length;
   const uint16_t   fsk_scale;
   volatile uint8_t fsk_code_bit;
-  volatile uint8_t fsk_code_counter;
+  volatile uint16_t fsk_code_counter;
   // internal
   volatile long   start_us;
 
-  Chirp(uint16_t f0, uint16_t f1, uint16_t code, uint32_t dur, uint32_t fc, double mea_clk = 0, uint16_t scale = 0)
+  Chirp(uint16_t f0, uint16_t f1, uint32_t code, uint32_t dur, uint32_t fc, double mea_clk = 0, uint8_t codelen = 32, uint16_t scale = 0)
   : f_0(f0), f_1(f1), f_clock(fc),  // freq
     ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2),       // dds reference clock, defaults to 31250Hz for 16MHz clock
     n_samples(pow(2, 32)), ref_period(1e6/ref_clk),         // dds samples
-    tuning_word { n_samples * f0 / ref_clk, n_samples * f1 / ref_clk },
+    tuning_word_0(n_samples * f0 / ref_clk),
+    tuning_word_1(n_samples * f1 / ref_clk),
     cycle_period(SEQ_LENGTH), cycle_duty(0),                // pwm
-    cycles_per_chirp(ceil(ref_clk * float(dur / 1e6)),
+    cycles_per_chirp(ceil(ref_clk * float(dur / 1e6))),
     duration_on(dur), duration_off(dur),                    // duration
     duration(duration_on + duration_off),
-    fsk_code(code), fsk_scale(scale ? scale : ceil(cycles_per_chirp / 16.0)),
+    fsk_code(code), fsk_code_length(codelen),
+    fsk_scale(scale ? scale : ceil(cycles_per_chirp / float(codelen))),
     fsk_code_bit(0), fsk_code_counter(0)
   {
   }
@@ -73,8 +77,12 @@ typedef struct Chirp {
   
 } chirp_t;
 
+// codes:
+// - 0b01011001011110001110011010001011
+// - 0b11111100000011110000111000110010 = [1,2,3,4,6].map(n => { let str = ''; for(let i = 0; i < n; ++i) str += '1'; return str + str.replace(/1/g, '0'); }).reverse().join('')
+
 // chirp instance
-chirp_t chirp(1000, 1500, 0b1110011010001011, 1e6, 16000000, 30920);
+chirp_t chirp(1000, 1500, 0b11111100000011110000111000110010, 1e6, 16000000, 30920, 32);
 
 extern "C" {
 
@@ -96,12 +104,15 @@ void PWM0_IRQHandler(void){
 
       // 32bits phase accumulator
       // tuning word depends on code bit
-      uint8_t fsk_bit = (chirp.fsk_code >> chirp.fsk_code_bit) & 0x01;
-      if(fsk_bit)
+      uint8_t fsk_bit = uint8_t(chirp.fsk_code >> chirp.fsk_code_bit) & 0x01;
+      unsigned long tuning_word;
+      if(fsk_bit){
         NRF_GPIO->OUTSET = 1 << A5;
-      else
+        tuning_word = chirp.tuning_word_1;
+      }else{
         NRF_GPIO->OUTCLR = 1 << A5;
-      unsigned long tuning_word = chirp.tuning_word[fsk_bit];
+        tuning_word = chirp.tuning_word_0;
+      }
       chirp.phaccu += tuning_word;
   
       // frequency debug
@@ -154,9 +165,9 @@ void PWM0_IRQHandler(void){
 
 }
 
-void init_sinetable(){
+void init_sinetable(float amplitude = 1.0){
   // compute sine table
-  uint16_t sine_mid = SEQ_LENGTH / 2 - 1;
+  uint16_t sine_mid = amplitude * (SEQ_LENGTH / 2 - 1);
   for(int i = 0; i < SEQ_LENGTH; ++i){
     sine256[i] = round(sine_mid + sine_mid * sin(2 * M_PI * i / SEQ_LENGTH));
   }
@@ -175,14 +186,13 @@ void setup()
   digitalWrite(dbgPin, LOW);
   
   Serial.println("Generating sine table");
-  init_sinetable();
+  init_sinetable(1);
   
   Serial.println("Chirp info:");
   #define CHIRP_INFO(name) {Serial.print("- " #name ": "); Serial.println(chirp.name);}
   {
-    CHIRP_INFO(f_start);
-    CHIRP_INFO(f_end);
-    CHIRP_INFO(f_delta);
+    CHIRP_INFO(f_0);
+    CHIRP_INFO(f_1);
     CHIRP_INFO(f_clock);
     CHIRP_INFO(ref_clk);
     CHIRP_INFO(n_samples);
@@ -192,7 +202,11 @@ void setup()
     CHIRP_INFO(duration_on);
     CHIRP_INFO(duration_off);
     CHIRP_INFO(duration);
-    CHIRP_INFO(tuning_word);
+    CHIRP_INFO(tuning_word_0);
+    CHIRP_INFO(tuning_word_1);
+    CHIRP_INFO(fsk_code);
+    CHIRP_INFO(fsk_code_length);
+    CHIRP_INFO(fsk_scale);
   }
   
 

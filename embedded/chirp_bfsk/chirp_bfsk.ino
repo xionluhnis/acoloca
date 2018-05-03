@@ -13,46 +13,48 @@ int dbgPin = A5;
 static uint16_t sine256[SEQ_LENGTH];
 
 /**
- * Chirp function
- *  s(t) = sin(2pi f(t) f)
- *  f(t) = f0 + (f1-f0) t
- *  
- *  => s(t) = sin(2pi (f0 + (f1-f0)t) t )
+ * Frequency-Shift Keying chirp
  */
 
 typedef struct Chirp {
   // frequency information
-  const uint16_t  f_start;
-  const uint16_t  f_end;
-  const uint16_t  f_delta;
+  const uint16_t  f_0;
+  const uint16_t  f_1;
   const uint32_t  f_clock;
   // dds information
   const double  ref_clk;
   const double  n_samples;
   const double  ref_period;
+  const unsigned long tuning_word[2];
   volatile unsigned long phaccu;
-  volatile unsigned long tuning_word;
   // pwm cycle information
-  const uint16_t  cycle_period;
+  const uint16_t     cycle_period;
   volatile uint16_t  cycle_duty;
-  const uint16_t  cycles_per_chirp;
+  const uint32_t     cycles_per_chirp;
   // duration information
   const uint32_t  duration_on;  
   const uint32_t  duration_off; 
   const uint32_t  duration;
+  // fsk pulses
+  const uint16_t   fsk_code;
+  const uint16_t   fsk_scale;
+  volatile uint8_t fsk_code_bit;
+  volatile uint8_t fsk_code_counter;
   // internal
   volatile long   start_us;
 
-  Chirp(uint16_t f0, uint16_t f1, uint32_t dur, uint32_t fc, double mea_clk = 0)
-  : f_start(f0), f_end(f1), f_delta(f1 - f0), f_clock(fc),  // freq
+  Chirp(uint16_t f0, uint16_t f1, uint16_t code, uint32_t dur, uint32_t fc, double mea_clk = 0, uint16_t scale = 0)
+  : f_0(f0), f_1(f1), f_clock(fc),  // freq
     ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2),       // dds reference clock, defaults to 31250Hz for 16MHz clock
     n_samples(pow(2, 32)), ref_period(1e6/ref_clk),         // dds samples
+    tuning_word { n_samples * f0 / ref_clk, n_samples * f1 / ref_clk },
     cycle_period(SEQ_LENGTH), cycle_duty(0),                // pwm
-    cycles_per_chirp(ceil(double(dur) / ref_clk)),
+    cycles_per_chirp(ceil(ref_clk * float(dur / 1e6)),
     duration_on(dur), duration_off(dur),                    // duration
-    duration(duration_on + duration_off)
+    duration(duration_on + duration_off),
+    fsk_code(code), fsk_scale(scale ? scale : ceil(cycles_per_chirp / 16.0)),
+    fsk_code_bit(0), fsk_code_counter(0)
   {
-    tuning_word = n_samples * f0 / ref_clk;
   }
 
   inline uint8_t prescaler() const {
@@ -72,7 +74,7 @@ typedef struct Chirp {
 } chirp_t;
 
 // chirp instance
-chirp_t chirp(1500, 1500, 1e6, 16000000, 30920);
+chirp_t chirp(1000, 1500, 0b1110011010001011, 1e6, 16000000, 30920);
 
 extern "C" {
 
@@ -92,22 +94,15 @@ void PWM0_IRQHandler(void){
     // chirp on/off
     if(dt < chirp.duration_on){
 
-      // exact local time
-      // double dt = cycle_counter * chirp.ref_clk;
-      
-      // compute current linear frequency
-      float f = chirp.f_start + float(chirp.f_delta * dt) / chirp.duration_on;
-
       // 32bits phase accumulator
-      // chirp.tuning_word = n_samples * f0 / ref_clk;
-      // chirp.phaccu += chirp.tuning_word;
-      unsigned long tuning_word = chirp.n_samples * f / chirp.ref_clk;
+      // tuning word depends on code bit
+      uint8_t fsk_bit = (chirp.fsk_code >> chirp.fsk_code_bit) & 0x01;
+      if(fsk_bit)
+        NRF_GPIO->OUTSET = 1 << A5;
+      else
+        NRF_GPIO->OUTCLR = 1 << A5;
+      unsigned long tuning_word = chirp.tuning_word[fsk_bit];
       chirp.phaccu += tuning_word;
-
-      // /!\ do not assign directly tuning_word expression
-      // chirp.phaccu += chirp.n_samples * f / chirp.ref_clk;
-      // this does not work!
-      // the compiler messes up the type conversion !!!
   
       // frequency debug
       static uint8_t last_idx = 0;
@@ -123,6 +118,14 @@ void PWM0_IRQHandler(void){
       // update duty cycle from sine table
       chirp.cycle_duty = sine256[sine_idx];
       
+      // fsk counters
+      chirp.fsk_code_counter += 1;
+      if(chirp.fsk_code_counter >= chirp.fsk_scale){
+        // move to next fsk code bit
+        chirp.fsk_code_bit += 1;
+        chirp.fsk_code_counter = 0;
+      }
+      
     } else {
       
       // out of chirp
@@ -130,6 +133,11 @@ void PWM0_IRQHandler(void){
         // we should restart chirp on next iteration
         chirp.phaccu = 0;
         chirp.start_us = current;
+        
+        // restart counters
+        chirp.fsk_code_bit = 0;
+        chirp.fsk_code_counter = 0;
+        
         // debug signal
         NRF_GPIO->OUT ^= 1 << A4;
       } else {
@@ -193,6 +201,7 @@ void setup()
   NRF_GPIO->DIRSET = 1 << A2; // phase 8-bit overflow (to measure frequency)
   NRF_GPIO->DIRSET = 1 << A3; // real pwm frequency (to tune reference frequency)
   NRF_GPIO->DIRSET = 1 << A4; // chirp duration
+  NRF_GPIO->DIRSET = 1 << A5; // fsk code
 
   Serial.println("Initializing PWM");
   NRF_PWM0->PSEL.OUT[0] = (A0 << PWM_PSEL_OUT_PIN_Pos) | (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);

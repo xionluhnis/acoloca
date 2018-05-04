@@ -33,7 +33,7 @@ typedef struct Chirp {
   volatile unsigned long phaccu;
   volatile unsigned long tuning_word;
   // pwm cycle information
-  const uint16_t  cycle_period;
+  const uint16_t  cycle_length;
   volatile uint16_t  cycle_duty;
   const uint32_t  cycles_per_chirp;
   // duration information
@@ -47,8 +47,8 @@ typedef struct Chirp {
   : f_start(f0), f_end(f1), f_delta(f1 - f0), f_clock(fc),  // freq
     ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2),       // dds reference clock, defaults to 31250Hz for 16MHz clock
     n_samples(pow(2, 32)), ref_period(1e6/ref_clk),         // dds samples
-    cycle_period(SEQ_LENGTH), cycle_duty(0),                // pwm
-    cycles_per_chirp(ceil(ref_clk * float(dur / 1e6)),
+    cycle_length(SEQ_LENGTH), cycle_duty(0),                // pwm
+    cycles_per_chirp(ceil(ref_clk * float(dur / 1e6))),
     duration_on(dur), duration_off(dur),                    // duration
     duration(duration_on + duration_off)
   {
@@ -72,7 +72,7 @@ typedef struct Chirp {
 } chirp_t;
 
 // chirp instance
-chirp_t chirp(1500, 1500, 1e6, 16000000, 30920);
+chirp_t chirp(1000, 1100, 1e6, 16000000, 30920);
 
 extern "C" {
 
@@ -146,9 +146,9 @@ void PWM0_IRQHandler(void){
 
 }
 
-void init_sinetable(){
+void init_sinetable(float amplitude = 1.0){
   // compute sine table
-  uint16_t sine_mid = SEQ_LENGTH / 2 - 1;
+  uint16_t sine_mid = amplitude * (SEQ_LENGTH / 2 - 1);
   for(int i = 0; i < SEQ_LENGTH; ++i){
     sine256[i] = round(sine_mid + sine_mid * sin(2 * M_PI * i / SEQ_LENGTH));
   }
@@ -167,7 +167,7 @@ void setup()
   digitalWrite(dbgPin, LOW);
   
   Serial.println("Generating sine table");
-  init_sinetable();
+  init_sinetable(1.0);
   
   Serial.println("Chirp info:");
   #define CHIRP_INFO(name) {Serial.print("- " #name ": "); Serial.println(chirp.name);}
@@ -179,7 +179,7 @@ void setup()
     CHIRP_INFO(ref_clk);
     CHIRP_INFO(n_samples);
     CHIRP_INFO(ref_period);
-    CHIRP_INFO(cycle_period);
+    CHIRP_INFO(cycle_length);
     CHIRP_INFO(cycles_per_chirp);
     CHIRP_INFO(duration_on);
     CHIRP_INFO(duration_off);
@@ -201,7 +201,7 @@ void setup()
   Serial.print("Prescaler: ");
   Serial.println(chirp.prescaler());
   NRF_PWM0->PRESCALER = (chirp.prescaler() << PWM_PRESCALER_PRESCALER_Pos);
-  NRF_PWM0->COUNTERTOP = (chirp.cycle_period << PWM_COUNTERTOP_COUNTERTOP_Pos); //1 msec
+  NRF_PWM0->COUNTERTOP = (chirp.cycle_length << PWM_COUNTERTOP_COUNTERTOP_Pos); //1 msec
   NRF_PWM0->LOOP = (PWM_LOOP_CNT_Disabled << PWM_LOOP_CNT_Pos);
   NRF_PWM0->DECODER = (PWM_DECODER_LOAD_Common << PWM_DECODER_LOAD_Pos) | (PWM_DECODER_MODE_RefreshCount << PWM_DECODER_MODE_Pos);
   NRF_PWM0->SEQ[0].PTR = ((uint32_t)(&chirp.cycle_duty) << PWM_SEQ_PTR_PTR_Pos);

@@ -24,9 +24,8 @@ typedef struct Chirp {
   // frequency information
   const uint16_t  f_start;
   const uint16_t  f_end;
-  const uint16_t  f_delta;
+  const int16_t   f_delta;
   const uint32_t  f_clock;
-  const uint16_t  f_samples;
   // dds information
   const double  ref_clk;
   const double  n_samples;
@@ -35,6 +34,7 @@ typedef struct Chirp {
   const uint16_t      cycle_length;
   volatile uint16_t   cycle_duty;
   const uint32_t      cycles_per_chirp;
+  const uint32_t      cycles_per_half_chirp;
   const unsigned long cycle_duration;
   // dds phase information
   volatile unsigned long phaccu;
@@ -48,17 +48,17 @@ typedef struct Chirp {
   // internal
   volatile long   start_us;
 
-  Chirp(uint16_t f0, uint16_t f1, uint32_t dur, uint32_t fc, double mea_clk = 0, uint16_t freq_samples = 1)
+  Chirp(uint16_t f0, uint16_t f1, uint32_t dur, uint32_t fc, double mea_clk = 0)
   : f_start(f0), f_end(f1), f_delta(f1 - f0), f_clock(fc),  // freq
-    f_samples(freq_samples),
     ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2),       // dds reference clock, defaults to 31250Hz for 16MHz clock
     n_samples(pow(2, 32)), ref_period(1e6/ref_clk),         // dds samples
     cycle_length(SEQ_LENGTH), cycle_duty(0),                // pwm
     cycles_per_chirp(ceil(ref_clk * float(dur / 1e6))),
+    cycles_per_half_chirp(cycles_per_chirp/2),
     cycle_duration(round(double(1e6) / (dur * ref_clk))),
     tuning_word(n_samples * f0 / ref_clk),
     tuning_word_first(tuning_word),
-    tuning_word_delta(round(f_delta / (ref_clk * dur / 1e6) * n_samples / ref_clk * f_samples)),
+    tuning_word_delta(round(f_delta / (ref_clk * dur / 1e6) * n_samples / ref_clk * 2)),
     duration_on(dur), duration_off(dur),                    // duration
     duration(duration_on + duration_off)
   {
@@ -81,7 +81,7 @@ typedef struct Chirp {
 } chirp_t;
 
 // chirp instance
-chirp_t chirp(1000, 1100, 1e6, 16000000, 30920, 3000);
+chirp_t chirp(1100, 1000, 1e6, 16000000, 30920);
 
 extern "C" {
 
@@ -103,26 +103,13 @@ void PWM0_IRQHandler(void){
     // chirp on/off
     if(dt < chirp.duration_on){
 
-      // exact local time
-      // double dt = cycle_counter * chirp.ref_clk;
-      
-      // compute current linear frequency
-      // float f = chirp.f_start + float(chirp.f_delta * dt) / chirp.duration_on;
-
       // 32bits phase accumulator
-      // chirp.tuning_word = n_samples * f0 / ref_clk;
-      // chirp.phaccu += chirp.tuning_word;
-      //unsigned long tuning_word = chirp.n_samples * f / chirp.ref_clk;
-      if(sampleIdx++ >= chirp.f_samples){
+      if(sampleIdx++ >= chirp.cycles_per_half_chirp){
+        chirp.tuning_word -= chirp.tuning_word_delta;
+      } else {
         chirp.tuning_word += chirp.tuning_word_delta;
-        sampleIdx = 0;
       }
       chirp.phaccu += chirp.tuning_word;
-
-      // /!\ do not assign directly tuning_word expression
-      // chirp.phaccu += chirp.n_samples * f / chirp.ref_clk;
-      // this does not work!
-      // the compiler messes up the type conversion !!!
   
       // frequency debug
       static uint8_t last_idx = 0;

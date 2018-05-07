@@ -26,6 +26,7 @@ typedef struct Chirp {
   const uint16_t  f_end;
   const uint16_t  f_delta;
   const uint32_t  f_clock;
+  const uint16_t  f_samples;
   // dds information
   const double  ref_clk;
   const double  n_samples;
@@ -47,8 +48,9 @@ typedef struct Chirp {
   // internal
   volatile long   start_us;
 
-  Chirp(uint16_t f0, uint16_t f1, uint32_t dur, uint32_t fc, double mea_clk = 0)
+  Chirp(uint16_t f0, uint16_t f1, uint32_t dur, uint32_t fc, double mea_clk = 0, uint16_t freq_samples = 1)
   : f_start(f0), f_end(f1), f_delta(f1 - f0), f_clock(fc),  // freq
+    f_samples(freq_samples),
     ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2),       // dds reference clock, defaults to 31250Hz for 16MHz clock
     n_samples(pow(2, 32)), ref_period(1e6/ref_clk),         // dds samples
     cycle_length(SEQ_LENGTH), cycle_duty(0),                // pwm
@@ -56,7 +58,7 @@ typedef struct Chirp {
     cycle_duration(round(double(1e6) / (dur * ref_clk))),
     tuning_word(n_samples * f0 / ref_clk),
     tuning_word_first(tuning_word),
-    tuning_word_delta(round(f_delta / (ref_clk * dur / 1e6) * n_samples / ref_clk)),
+    tuning_word_delta(round(f_delta / (ref_clk * dur / 1e6) * n_samples / ref_clk * f_samples)),
     duration_on(dur), duration_off(dur),                    // duration
     duration(duration_on + duration_off)
   {
@@ -79,7 +81,7 @@ typedef struct Chirp {
 } chirp_t;
 
 // chirp instance
-chirp_t chirp(1000, 1100, 1e6, 16000000, 30920);
+chirp_t chirp(1000, 1100, 1e6, 16000000, 30920, 300);
 
 extern "C" {
 
@@ -90,6 +92,8 @@ void PWM0_IRQHandler(void){
   NRF_GPIO->OUT ^= 1 << A3;
   if(NRF_PWM0->EVENTS_PWMPERIODEND != 0){
     NRF_PWM0->EVENTS_PWMPERIODEND = 0; // clear interrupt
+
+    static uint16_t sampleIdx = 0;
 
     // time information
     long current = micros();
@@ -109,7 +113,10 @@ void PWM0_IRQHandler(void){
       // chirp.tuning_word = n_samples * f0 / ref_clk;
       // chirp.phaccu += chirp.tuning_word;
       //unsigned long tuning_word = chirp.n_samples * f / chirp.ref_clk;
-      chirp.tuning_word += chirp.tuning_word_delta;
+      if(sampleIdx++ >= chirp.f_samples){
+        chirp.tuning_word += chirp.tuning_word_delta;
+        sampleIdx = 0;
+      }
       chirp.phaccu += chirp.tuning_word;
 
       // /!\ do not assign directly tuning_word expression
@@ -139,6 +146,7 @@ void PWM0_IRQHandler(void){
         chirp.phaccu = 0;
         chirp.start_us = current;
         chirp.tuning_word = chirp.tuning_word_first;
+        sampleIdx = 0;
         // debug signal
         NRF_GPIO->OUT ^= 1 << A4;
       } else {

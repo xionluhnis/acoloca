@@ -3,7 +3,9 @@ clear all;
 close all;
 
 ideal_signal = 0;
-sampling = 6e4:8e4;
+sampling = 6.5e4:8e4;
+sampling = 8e4:9.5e4;
+%sampling = 1e5:11.5e4;
 %sampling = 4e4:7e4; % empty for all
 fast_quad = 0;
 sample_times = [];
@@ -92,7 +94,7 @@ ref_idx = 1;
 invsqr2 = 1.0 / sqrt(2.0);
 
 loop_lowpass = Biquad(Biquad.IDENTITY, 1000, sample_rate, invsqr2);
-output_lowpass = Biquad(Biquad.LOWPASS, 100, sample_rate, invsqr2);
+output_lowpass = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
 lock_lowpass1 = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
 lock_lowpass2 = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
 
@@ -152,9 +154,9 @@ for i = 1:N
     data(i, 3) = pll_lock2;
     data(i, 4) = logic_lock;
     % data(i, 5) = pll_integral * 32;
-    data(i, 5) = pll_lock1 ^ 2 + pll_lock2 ^ 2;
-    %data(i, 5) = (ref_freq - pll_cf) / pll_cf;
-    % data(i, 2) = data(i,2) / (data(i,5)+1e-3);
+    % data(i, 5) = pll_lock1 ^ 2 + pll_lock2 ^ 2;
+    delta = output_lowpass.y(1) - output_lowpass.y(2);
+    data(i, 5) = delta;
 end
 
 x = reshape(1:N, [], 1);
@@ -185,5 +187,5 @@ end
 set(gcf, 'color', 'w');
 l = legend('Signal', ...
     'PLL Output', 'Lock1', 'Lock2', 'Logic Lock', ...
-    'PLL Integral', 'Relative Frequency');
+    'PLL Delta', 'Relative Frequency');
 l.FontSize = 16;

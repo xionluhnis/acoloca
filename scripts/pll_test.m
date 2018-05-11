@@ -4,9 +4,34 @@ clear all;
 ideal_signal = 0;
 sampling = []; % empty for all
 fast_quad = 1;
+sample_times = [];
 
 % ori = dlmread('data/chirps_new3.log');
 ori = dlmread('data/chirp_1.5k.log');
+ori = dlmread('data/chirp_fsk_750_1.5k.log');
+ori = dlmread('data/chirp_fsk_750.log');
+
+% sample timing
+if size(ori, 2) == 2
+    sample_times = ori(:, 1);
+    ori = ori(:, 2);
+end
+
+% sample_rate = 0.86575e4; % from average timed serial reading
+if isempty(sample_times)
+    sample_rate = 0.86575e4; % quite important!
+else
+    s = floor(sample_times / 1e3);
+    t_uniq = unique(s);
+    t_uniq = t_uniq(2:end-1); % skip beggining and end timings (since partial)
+    t_cnts = nan(numel(t_uniq), 1);
+    for i = 1:numel(t_uniq)
+        t_cnts(i) = numel(find(s == t_uniq(i)));
+    end
+    sample_rate = median(t_cnts);
+end
+
+pll_cf = 750;
 
 % sub-window processing
 if ~isempty(sampling)
@@ -18,15 +43,16 @@ if ideal_signal
     src = (ori-350)/200;
 else
     % automatic gain control / normalization
-    src = normalize(ori, 500);
+    norm_size = ceil(3 * sample_rate / pll_cf);
+    src = normalize(ori, norm_size);
     ori = ori(end-numel(src)+1:end);
 end
 
 % filter out-of-frequency noise
-if ideal_signal
+if ideal_signal || 1
     % src = Biquad(Biquad.HIGHPASS, 500, 1e4, 1).filter(src);
-    [B, A] = butter(3, [0.2, 0.4], 'bandpass');
-    src = filter(B, A, src);
+    [B, A] = butter(3, [-0.01 +0.01] + pll_cf * 2 / sample_rate, 'bandpass');
+    src = filter(B, A, src) * 2.5;
     ori = ori(end-numel(src)+1:end);
 end
 
@@ -44,16 +70,14 @@ end
 
 %% Matlab implementation
 
-% sample_rate = 0.86575e4; % from average timed serial reading
-sample_rate = 0.9e4; % quite important!
+
 
 pll_integral = 0;
 old_ref = 0;
 old_ref1 = 0;
 old_ref2 = 0;
 old_pll_lock = 0;
-pll_cf = 1500;
-pll_loop_gain = 0.1;
+pll_loop_gain = 0.01;
 ref_sig = 0;
 ref_idx = 1;
 
@@ -61,8 +85,8 @@ invsqr2 = 1.0 / sqrt(2.0);
 
 loop_lowpass = Biquad(Biquad.IDENTITY, 1000, sample_rate, invsqr2);
 output_lowpass = Biquad(Biquad.IDENTITY, 100, sample_rate, invsqr2);
-lock_lowpass1 = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
-lock_lowpass2 = Biquad(Biquad.LOWPASS, 10, sample_rate, invsqr2);
+lock_lowpass1 = Biquad(Biquad.LOWPASS, 100, sample_rate, invsqr2);
+lock_lowpass2 = Biquad(Biquad.LOWPASS, 100, sample_rate, invsqr2);
 
 % output for visualization
 N = numel(src);
@@ -96,7 +120,7 @@ for i = 1:N
     pll_lock1 = lock_lowpass1.filter(-quad_ref * test_sig);
     pll_lock2 = lock_lowpass2.filter(-ref_sig * test_sig);
     % logic lock uses four different phases
-    logic_lock = max(abs(pll_lock1), abs(pll_lock2)) > 0.2; % thresholding
+    logic_lock = max(pll_lock1, pll_lock2) > 0.2; % thresholding
     
     data(i, 1) = output - 0.5;
     data(i, 2) = pll_lock1;

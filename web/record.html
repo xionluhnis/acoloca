@@ -67,7 +67,7 @@ window.addEventListener('load', function(){
   let img = document.querySelector('#img');
 
   document.querySelector('#capture').addEventListener('click', function(){
-    imageCapture.takePhoto().then(blob => {
+    imageCapture.takePhoto({ imageWidth: 4000 }).then(blob => {
       img.src = URL.createObjectURL(blob);
       img.onload = () => { URL.revokeObjectURL(this.src); }
     }).catch(err => console.error('takePhoto error:', err));

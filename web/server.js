@@ -14,7 +14,8 @@ const finalhandler = require('finalhandler');
 const serveStatic = require('serve-static');
 
 // parameters
-const port = 4443;
+const port = 4443
+const hostname = fs.existsSync('hostname') ? fs.fileReadSync('hostname', 'utf-8') : false;
 
 // instances
 const serve = serveStatic('./');
@@ -81,4 +82,7 @@ rl.on('line', function(line){
   }
 });
 
-server.listen(port, 'krakowiak.csail.mit.edu');
+if(hostname)
+  server.listen(port, hostname);
+else
+  server.listen(port);

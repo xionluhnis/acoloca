@@ -5,3 +5,6 @@
 *.swp
 wip
 node_modules
+private
+web/data/*
+!web/data/.gitkeep

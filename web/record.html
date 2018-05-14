@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Image Capture</title>
+    <link rel="stylesheet" href="style.css" />
+    <meta charset="utf-8"/>
+  </head>
+  <body>
+    <h1>Image Capture</h1>
+    <img id="img" />
+
+    <label for="camera_list">Cameras:</label>
+    <select id="camera_list">
+      
+    </select>
+    <button id="capture">Capture</button>
+    <code class="block" id="console">
+    </code>
+
+    <script type="text/javascript">
+"use trict";
+
+function log(text){
+  document.querySelector('#console').innerHTML += text + '\n<br>\n'
+}
+function logErr(err){
+  document.querySelector('#console').innerHTML += 'Error: ' + err + '\n<br>\n';
+}
+
+// image capture
+window.addEventListener('load', function(){
+
+  var mediaTracks = [], imageCapture;
+  
+  // camera list
+  let cameraList = document.querySelector('#camera_list');
+  while(cameraList.children.length)
+    cameraList.removeChildAt(0);
+
+  let startCapture = function(deviceId){
+    log('Starting capture. Device=' + deviceId);
+    let constraints = deviceId ? {video: {deviceId: {exact: deviceId}}} : {video: { facingMode: 'environment' }};
+    navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+      console.log(stream);
+      mediaTracks = stream.getVideoTracks();
+      log('- tracks: ' + mediaTracks.length);
+      imageCapture = new ImageCapture(mediaTracks[0]);
+      console.log(imageCapture);
+    }).catch(err => { console.error('getUserMedia error:', err); logErr(err); });
+  };
+  cameraList.addEventListener('change', function (event){
+    startCapture(this.value);
+  });
+  
+  navigator.mediaDevices.enumerateDevices().then( (devices) => {
+    devices.forEach((devInfo) => {
+      if(devInfo.kind !== 'videoinput')
+        return;
+      let camera = document.createElement('option');
+      camera.value = devInfo.deviceId;
+      camera.text = devInfo.label;
+      cameraList.appendChild(camera);
+    });
+    startCapture(cameraList.firstChild.value);
+  }).catch(err => console.error('enumerateDevices error:', err));
+
+  let img = document.querySelector('#img');
+
+  document.querySelector('#capture').addEventListener('click', function(){
+    imageCapture.takePhoto().then(blob => {
+      img.src = URL.createObjectURL(blob);
+      img.onload = () => { URL.revokeObjectURL(this.src); }
+    }).catch(err => console.error('takePhoto error:', err));
+  });
+
+  let port = 4443;
+  let socket = new WebSocket('wss://' + window.location.hostname + ':' + port);
+  socket.onopen = function(event){
+    log('Connected to websocket');
+    console.log(socket);
+  };
+  socket.onerror = function(event){
+    log('Socket error');
+  };
+  socket.onmessage = function(event){
+    switch(event.data || 'null'){
+      case 'image':
+        log('message: image');
+        imageCapture.takePhoto().then(blob => {
+          console.log(blob);
+          // send to server
+          socket.send(blob.type);
+          socket.send(blob);
+          // update image
+          img.src = URL.createObjectURL(blob);
+          img.onload = () => { URL.revokeObjectURL(this.src); };
+        }).catch(err => logErr(err));
+        break;
+      case 'echo':
+        log('message: echo');
+        socket.send('echo back');
+        break;
+      default:
+        log('Unknown message: ', event.data);
+        break;
+    }
+  };
+
+});
+    </script>
+  </body>
+</html>

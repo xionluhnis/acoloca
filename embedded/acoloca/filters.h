@@ -90,8 +90,10 @@ private:
   SumType total, numerator;
 };
 
+FIXED_POINTS_BEGIN_NAMESPACE
 using SQ2x13 = SFixed<2, 13>;
 using UQ7x1  = UFixed<7, 1>;
+FIXED_POINTS_END_NAMESPACE
 
 /**
  * Running normalization filter (of uint8_t signal)
@@ -101,7 +103,7 @@ using UQ7x1  = UFixed<7, 1>;
  * 
  * @return the normalized signal
  */
- template <uint8_t Size>
+ template <int Size>
 struct NormalizationFilter {
 
   // type of pointer (uint8_t or uint16_t)
@@ -134,17 +136,15 @@ struct NormalizationFilter {
     } else if(count[min_value] == 0){
       while(count[++min_value] == 0);
     }
-
-    // range information
-    uint8_t range = max_value - min_value;
     
     // mean-centering
     UQ8x8 x_mean = mavg(UQ8x8(x_new));
     SQ15x16 x_cent = SQ15x16(x_new) - x_mean;
 
     // range normalization
+    uint8_t range = max_value - min_value;
     if(range){
-      UQ7x1 amplitude(range, 2);
+      UQ7x1 amplitude(range >> 1, range & 1); // = range / 2
       return SQ2x13(x_cent / amplitude);
     } else {
       return SQ2x13(x_cent);

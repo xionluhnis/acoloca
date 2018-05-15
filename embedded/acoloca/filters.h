@@ -1,9 +1,6 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 #pragma once
 
-#include <cassert>
-#include <cstdint>
-#include <limits>
 #include <type_traits>
 
 #include <Arduino.h>
@@ -138,13 +135,14 @@ struct NormalizationFilter {
     }
     
     // mean-centering
-    UQ8x8 x_mean = mavg(UQ8x8(x_new));
-    SQ15x16 x_cent = SQ15x16(x_new) - x_mean;
+    UQ8x8 x_mean = mavg(UQ8x8(x));
+    SQ15x16 x_cent = SQ15x16(x) - SQ15x16(x_mean);
 
     // range normalization
     uint8_t range = max_value - min_value;
     if(range){
-      UQ7x1 amplitude(range >> 1, range & 1); // = range / 2
+      // UQ7x1 amplitude(range >> 1, range & 1); // = range / 2
+      SQ15x16 amplitude(range >> 1, (range & 1) << 15);
       return SQ2x13(x_cent / amplitude);
     } else {
       return SQ2x13(x_cent);
@@ -152,7 +150,7 @@ struct NormalizationFilter {
   }
   
 private:
-  MovingAverage<UQ8x8, UQ16,16, Size> mavg;
+  MovingAverage<UQ8x8, UQ16x16, Size> mavg;
   FilterBuffer<uint8_t, Size> buffer;
   CounterType count[256];
   uint8_t min_value, max_value;

@@ -8,6 +8,9 @@
 #include "buffer.h"
 #include "movavg.h"
 
+#ifndef USE_FIXED_POINT
+#define USE_FIXED_POINT 0
+#endif
 
 FIXED_POINTS_BEGIN_NAMESPACE
 using SQ2x13 = SFixed<2, 13>;
@@ -31,23 +34,34 @@ struct NormalizationFilter {
                                     typename std::conditional<Size <= UINT16_MAX, uint16_t, uint32_t>::type>::type CounterType;
   // computation types
   typedef uint8_t InputType;
+#if USE_FIXED_POINT
   typedef SQ15x16 AverageType;
   typedef SQ15x16 HigherSType;
   typedef SQ2x13  OutputType;
+#else
+  // typedef SQ15x16 AverageType;
+  typedef float AverageType;
+  typedef float HigherSType;
+  typedef float  OutputType;
+#endif
 
   NormalizationFilter() {
     count[0] = Size;
   }
 
   OutputType operator()(const InputType &x){
-    // update buffer
+    //- update buffer (~300ns)
+    // NRF_GPIO->OUTSET = 1 << A2;
     InputType last = buffer.last();
     buffer.push(x);
+    // NRF_GPIO->OUTCLR = 1 << A2;
 
     // update count information
     count[x] += 1;
     count[last] -= 1;
-    
+
+    //- update bounds (0.5-3us)
+    // NRF_GPIO->OUTSET = 1 << A3;
     // update maximum
     if(x > max_value){
       max_value = x;
@@ -60,17 +74,21 @@ struct NormalizationFilter {
     } else if(count[min_value] == 0){
       while(count[++min_value] == 0);
     }
+    // NRF_GPIO->OUTCLR = 1 << A3;
     
-    // mean-centering
+    // mean-centering (
+    NRF_GPIO->OUTSET = 1 << A4;
     AverageType x_mean = mavg(InputType(x));
+    NRF_GPIO->OUTCLR = 1 << A4;
+    
     HigherSType x_cent = HigherSType(x) - HigherSType(x_mean);
 
     // range normalization
     InputType range = max_value - min_value;
     if(range){
       // UQ7x1 amplitude(range >> 1, range & 1); // = range / 2
-      HigherSType amplitude(range >> 1, (range & 1) << (HigherSType::FractionSize - 1));
-      return OutputType(x_cent / amplitude);
+      // HigherSType amplitude(range >> 1, (range & 1) << (HigherSType::FractionSize - 1));
+      return OutputType(x_cent * 2 / range);
     } else {
       return OutputType(x_cent);
     }

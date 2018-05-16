@@ -1,5 +1,7 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 
+#define USE_FIXED_POINT 1
+
 #include <Arduino.h>
 #include "chirp.h"
 #include "filters.h"
@@ -52,8 +54,14 @@ void loop()
   if(data){
     
     // filter data
+    // SQ2x13 = 8-13us
+    // float  = 2-8us
     NRF_GPIO->OUTSET = 1 << A1;
+#if USE_FIXED_POINT
     SQ2x13 out = normFilter(data);
+#else
+    float out = normFilter(data);
+#endif
     NRF_GPIO->OUTCLR = 1 << A1;
 
     /*
@@ -62,7 +70,7 @@ void loop()
     */
 
     // send result back
-    uint16_t uout = out.getInternal();
+    uint16_t uout = SQ2x13(out).getInternal();
 
     /*
 

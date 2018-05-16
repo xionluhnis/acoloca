@@ -50,29 +50,28 @@ void loop()
 {
   // read data
   uint8_t data = Serial.read();
+  if(!data)
+    return;
 
-  if(data){
-
-    // send header
-    Serial.write(uint8_t(0xFF));
-    Serial.write(uint8_t(0x01));
-    
-    // filter data
-    NRF_GPIO->OUTSET = 1 << A1;
+  // send header
+  Serial.write(uint8_t(0xFF));
+  Serial.write(uint8_t(0x01));
+  
+  // filter data
+  NRF_GPIO->OUTSET = 1 << A1;
 #if USE_FIXED_POINT
-    // SQ2x13 = 8-13us
-    SQ2x13 out = normFilter(data);
+  // SQ2x13 = 8-13us
+  SQ2x13 out = normFilter(data);
 #else
-    // float  = 2-8us
-    float out = normFilter(data);
+  // float  = 2-8us
+  float out = normFilter(data);
 #endif
-    NRF_GPIO->OUTCLR = 1 << A1;
+  NRF_GPIO->OUTCLR = 1 << A1;
 
-    // send result back
-    uint16_t uout = SQ2x13(out).getInternal();
-    Serial.write(uout >> 8);    // MSB
-    Serial.write(uout & 0xFF);  // LSB
-  }
+  // send result back
+  uint16_t uout = SQ2x13(out).getInternal();
+  Serial.write(uout >> 8);    // MSB
+  Serial.write(uout & 0xFF);  // LSB
 }
 
 

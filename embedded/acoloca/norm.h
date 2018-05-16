@@ -2,8 +2,6 @@
 #pragma once
 
 #include <Arduino.h>
-#include "fixed/FixedPoints.h"
-#include "fixed/FixedPointsCommon.h"
 
 #include "buffer.h"
 #include "movavg.h"
@@ -12,10 +10,16 @@
 #define USE_FIXED_POINT 0
 #endif
 
+#if USE_FIXED_POINT
+#include "fixed/FixedPoints.h"
+#include "fixed/FixedPointsCommon.h"
+
 FIXED_POINTS_BEGIN_NAMESPACE
 using SQ2x13 = SFixed<2, 13>;
 using UQ7x1  = UFixed<7, 1>;
 FIXED_POINTS_END_NAMESPACE
+
+#endif
 
 /**
  * Running normalization filter (of uint8_t signal)
@@ -50,7 +54,7 @@ struct NormalizationFilter {
   }
 
   OutputType operator()(const InputType &x){
-    //- update buffer (~300ns)
+    //- update buffer
     // NRF_GPIO->OUTSET = 1 << A2;
     InputType last = buffer.last();
     buffer.push(x);
@@ -60,7 +64,7 @@ struct NormalizationFilter {
     count[x] += 1;
     count[last] -= 1;
 
-    //- update bounds (0.5-3us)
+    //- update bounds
     // NRF_GPIO->OUTSET = 1 << A3;
     // update maximum
     if(x > max_value){
@@ -76,18 +80,16 @@ struct NormalizationFilter {
     }
     // NRF_GPIO->OUTCLR = 1 << A3;
     
-    // mean-centering (
-    NRF_GPIO->OUTSET = 1 << A4;
+    //- mean-centering
+    // NRF_GPIO->OUTSET = 1 << A4;
     AverageType x_mean = mavg(InputType(x));
-    NRF_GPIO->OUTCLR = 1 << A4;
+    // NRF_GPIO->OUTCLR = 1 << A4;
     
     HigherSType x_cent = HigherSType(x) - HigherSType(x_mean);
 
     // range normalization
     InputType range = max_value - min_value;
     if(range){
-      // UQ7x1 amplitude(range >> 1, range & 1); // = range / 2
-      // HigherSType amplitude(range >> 1, (range & 1) << (HigherSType::FractionSize - 1));
       return OutputType(x_cent * 2 / range);
     } else {
       return OutputType(x_cent);

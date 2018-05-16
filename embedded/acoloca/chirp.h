@@ -1,12 +1,7 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 #pragma once
 
-/**
- * Sine table to avoid computing sine in IRQ
- */
-#define SEQ_LENGTH 256   
-static uint16_t sin256[SEQ_LENGTH];
-static uint16_t cos256[SEQ_LENGTH];
+#include "sine.h"
 
 /**
  * Chirp function
@@ -144,15 +139,6 @@ void PWM0_IRQHandler(void){
   NRF_GPIO->OUTCLR = 1 << A1;
 }
 
-}
-
-void init_sinetables(float amplitude = 1.0){
-  // compute sine table
-  uint16_t sine_mid = amplitude * (SEQ_LENGTH / 2 - 1);
-  for(int i = 0; i < SEQ_LENGTH; ++i){
-    sin256[i] = round(sine_mid + sine_mid * sin(2 * M_PI * i / SEQ_LENGTH));
-    cos256[i] = round(sine_mid + sine_mid * cos(2 * M_PI * i / SEQ_LENGTH));
-  }
 }
 
 void chirp_setup(){

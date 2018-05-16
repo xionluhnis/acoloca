@@ -14,7 +14,7 @@ struct BiquadFilter {
   explicit BiquadFilter(Type a0 = 1, Type a1 = 0, Type a2 = 0, Type b0 = 1, Type b1 = 0, Type b2 = 0)
   : A{ a0, a1, a2 }, B{ b0, b1, b2 } {}
 
-  const Type& operator()(const Type& x_new) {
+  Type operator()(const Type& x_new) {
     // compute new output
     Type y_new = B[0] * x_new + B[1] * x[0] + B[2] * x[1] - A[1] * y[0] - A[2] * y[1];
     
@@ -66,6 +66,20 @@ struct BiquadFilter {
 
   static BiquadFilter identity() {
     return BiquadFilter();
+  }
+
+  void debug() {
+    Serial.print("A: ");
+    for(uint8_t i = 0; i < 3; ++i){
+      Serial.print(A[i], 6);
+      Serial.print(" ");
+    }
+    Serial.print("\nB: ");
+    for(uint8_t i = 0; i < 3; ++i){
+      Serial.print(B[i], 6);
+      Serial.print(" ");
+    }
+    Serial.println();
   }
 
 private:

@@ -10,7 +10,7 @@
 #define USE_FIXED_POINT 0
 #endif
 
-#if USE_FIXED_POINT
+// #if USE_FIXED_POINT
 #include "fixed/FixedPoints.h"
 #include "fixed/FixedPointsCommon.h"
 
@@ -19,7 +19,7 @@ using SQ2x13 = SFixed<2, 13>;
 using UQ7x1  = UFixed<7, 1>;
 FIXED_POINTS_END_NAMESPACE
 
-#endif
+// #endif
 
 /**
  * Running normalization filter (of uint8_t signal)

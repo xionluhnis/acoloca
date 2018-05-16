@@ -6,5 +6,7 @@
 wip
 node_modules
 private
+tools/data/*
+!tools/data/.gitkeep
 web/data/*
 !web/data/.gitkeep

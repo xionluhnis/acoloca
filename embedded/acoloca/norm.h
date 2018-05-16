@@ -29,14 +29,19 @@ struct NormalizationFilter {
   typedef typename std::conditional<Size <= UINT8_MAX,
                                     uint8_t,
                                     typename std::conditional<Size <= UINT16_MAX, uint16_t, uint32_t>::type>::type CounterType;
+  // computation types
+  typedef uint8_t InputType;
+  typedef SQ15x16 AverageType;
+  typedef SQ15x16 HigherSType;
+  typedef SQ2x13  OutputType;
 
   NormalizationFilter() {
     count[0] = Size;
   }
 
-  SQ2x13 operator()(const uint8_t &x){
+  OutputType operator()(const InputType &x){
     // update buffer
-    uint8_t last = buffer.last();
+    InputType last = buffer.last();
     buffer.push(x);
 
     // update count information
@@ -57,23 +62,23 @@ struct NormalizationFilter {
     }
     
     // mean-centering
-    UQ8x8 x_mean = mavg(UQ8x8(x));
-    SQ15x16 x_cent = SQ15x16(x) - SQ15x16(x_mean);
+    AverageType x_mean = mavg(InputType(x));
+    HigherSType x_cent = HigherSType(x) - HigherSType(x_mean);
 
     // range normalization
-    uint8_t range = max_value - min_value;
+    InputType range = max_value - min_value;
     if(range){
       // UQ7x1 amplitude(range >> 1, range & 1); // = range / 2
-      SQ15x16 amplitude(range >> 1, (range & 1) << 15);
-      return SQ2x13(x_cent / amplitude);
+      HigherSType amplitude(range >> 1, (range & 1) << (HigherSType::FractionSize - 1));
+      return OutputType(x_cent / amplitude);
     } else {
-      return SQ2x13(x_cent);
+      return OutputType(x_cent);
     }
   }
   
 private:
-  MovingAverage<UQ8x8, UQ16x16, Size> mavg;
-  FilterBuffer<uint8_t, Size> buffer;
+  MovingAverage<InputType, AverageType, Size> mavg;
+  FilterBuffer<InputType, Size> buffer;
   CounterType count[256];
-  uint8_t min_value, max_value;
+  InputType min_value, max_value;
 };

@@ -1,11 +1,18 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 
+#define CLOCK_ON(pin)  { NRF_GPIO->OUTSET = 1 << (pin); }
+#define CLOCK_OFF(pin) { NRF_GPIO->OUTCLR = 1 << (pin); }
+
 #define USE_FIXED_POINT 0
 
 #include <Arduino.h>
 #include "chirp.h"
 #include "filters.h"
 #include "pll.h"
+#include "saadc.h"
+
+constexpr const uint16_t LED1 = 17;
+constexpr const uint16_t LED2 = 19;
 
 // filters
 NormalizationFilter<25> norm_filter;
@@ -38,8 +45,16 @@ void setup()
   NRF_GPIO->DIRSET = 1 << A4; // chirp duration
   NRF_GPIO->OUTCLR = 1 << A1 | 1 << A2 | 1 << A3 | 1 << A4;
 
+  // initialize SAADC
+  Serial.println("Initializing SAADC");
+  saadc_setup();
+
   // initialize pll
+  Serial.println("Initializing PLL");
   pll_setup();
+
+  Serial.println("Start SAADC");
+  saadc_start();
 }
 
 /**************************************************************************/
@@ -49,33 +64,12 @@ void setup()
 /**************************************************************************/
 void loop()
 {
-  // read data
-  uint8_t data = Serial.read();
-  if(!data)
-    return;
+  // wait for some event
+  __WFE();
 
-  // record time of arrival
-  timestamp_t now = micros();
-
-  // send header
-  Serial.write(uint8_t(0xFF));
-  Serial.write(uint8_t(0x01));
-  
-  // filter data
-  float out = norm_filter(data);
-  
-  // run PLL loop
-  pll_run(out);
-
-  // demodulation
-  pll_demod(now);
-  
-  out = zx_count * 0.1f;
-
-  // send result back
-  uint16_t uout = SQ2x13(out).getInternal();
-  Serial.write(uout >> 8);    // MSB
-  Serial.write(uout & 0xFF);  // LSB
+  NRF_GPIO->OUT ^= 1 << LED1;
+  //Serial.print("Sample: "); Serial.println(saadc_sample);
+  //Serial.print("Count:  "); Serial.println(saadc_sample_count);
 }
 
 

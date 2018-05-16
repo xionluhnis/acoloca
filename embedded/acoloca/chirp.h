@@ -197,14 +197,14 @@ void chirp_setup(){
   NVIC_SetPriority(PWM0_IRQn, 0); //low priority
   NVIC_ClearPendingIRQ(PWM0_IRQn);
   NVIC_EnableIRQ(PWM0_IRQn);
+}
+
+void chirp_start() {
   
   Serial.println("Starting chirp");
   chirp.cycle_duty = sin256[0];
   chirp.start_us = micros();
-}
-
-void chirp_start() {
-  // send task
+  
   NRF_PWM0->TASKS_SEQSTART[0] = 1;
 }
 

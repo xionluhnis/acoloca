@@ -1,6 +1,6 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 
-#define USE_FIXED_POINT 1
+#define USE_FIXED_POINT 0
 
 #include <Arduino.h>
 #include "chirp.h"
@@ -52,46 +52,24 @@ void loop()
   uint8_t data = Serial.read();
 
   if(data){
+
+    // send header
+    Serial.write(uint8_t(0xFF));
+    Serial.write(uint8_t(0x01));
     
     // filter data
-    // SQ2x13 = 8-13us
-    // float  = 2-8us
     NRF_GPIO->OUTSET = 1 << A1;
 #if USE_FIXED_POINT
+    // SQ2x13 = 8-13us
     SQ2x13 out = normFilter(data);
 #else
+    // float  = 2-8us
     float out = normFilter(data);
 #endif
     NRF_GPIO->OUTCLR = 1 << A1;
 
-    /*
-    typedef SQ2x13 QNumber;
-    QNumber out = -1.5;
-    */
-
     // send result back
     uint16_t uout = SQ2x13(out).getInternal();
-
-    /*
-
-    Serial.println("Scale: ");
-    Serial.println(QNumber::Scale * 1.0);
-    Serial.println("IdentityMask");
-    Serial.println(QNumber::IdentityMask, BIN);
-    Serial.println("Inverse IdentityMask");
-    Serial.println(~QNumber::IdentityMask, BIN);
-    Serial.print("MSB=");
-    Serial.println(uout >> 8, BIN);
-    Serial.print("LSB=");
-    Serial.println(uout & 0xFF, BIN);
-    // */
-
-    // /*
-    // send header
-    Serial.write(uint8_t(0xFF));
-    Serial.write(uint8_t(0x01));
-
-    // send data
     Serial.write(uout >> 8);    // MSB
     Serial.write(uout & 0xFF);  // LSB
   }

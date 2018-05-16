@@ -17,10 +17,12 @@ const unsigned long TUNING_DELTA = N_SAMPLES * REF_FREQ / SAMPLE_RATE;
 const float LOCK_THRESHOLD = 0.2;
 
 // filters
-NormalizationFilter<25> normFilter;
+NormalizationFilter<25> norm_filter;
 BiquadFilter<float> output_lowpass = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
 BiquadFilter<float> lock1_lowpass  = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
 BiquadFilter<float> lock2_lowpass  = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
+Difference<int8_t> output_sign_diff;
+Difference<int8_t> logic_lock_diff;
 
 // pll signals
 float pll_integral = 0;
@@ -33,9 +35,14 @@ bool  pll_logic_lock = false;
 // reference signals
 float ref_phase  = 0;
 float ref_signal = 0;
-float ref_time   = 0;
 float ref_quad   = 0;
 unsigned long ref_phase_accu = 0;
+
+// demodulation data
+typedef unsigned long timestamp_t;
+uint8_t zx_count = 0;
+timestamp_t zx_times[2];
+FilterBuffer<timestamp_t, 10> timestamps;
 
 /**************************************************************************/
 /*!
@@ -83,6 +90,9 @@ void loop()
   if(!data)
     return;
 
+  // record time of arrival
+  timestamp_t now = micros();
+
   // send header
   Serial.write(uint8_t(0xFF));
   Serial.write(uint8_t(0x01));
@@ -91,50 +101,25 @@ void loop()
   NRF_GPIO->OUTSET = 1 << A1;
 #if USE_FIXED_POINT
   // SQ2x13 = 8-13us
-  SQ2x13 out = normFilter(data);
+  SQ2x13 out = norm_filter(data);
 #else
   // float  = 2-8us
-  float out = normFilter(data);
+  float out = norm_filter(data);
 #endif
   NRF_GPIO->OUTCLR = 1 << A1;
 
-  // PLL
+  // PLL (~3.8us)
   NRF_GPIO->OUTSET = 1 << A2;
   {
     // pase detector and filters
     pll_loop_control = out * ref_signal * PLL_GAIN; // ~250ns
     pll_output = output_lowpass(pll_loop_control); // ~500ns
-    
-
-    // FM integral
-    
-    pll_integral += pll_loop_control * SAMPLE_PERIOD; // ~100ns
-    
-    // reference signal
-    /*
-    NRF_GPIO->OUTSET = 1 << A3;
-    ref_time += SAMPLE_PERIOD; // ~100ns
-    ref_phase = REF_OMEGA * (ref_time + pll_integral); // ~100ns
-    NRF_GPIO->OUTCLR = 1 << A3;
-    
-    NRF_GPIO->OUTSET = 1 << A4;
-    ref_signal = sin(ref_phase);
-    NRF_GPIO->OUTCLR = 1 << A4;
-    */
 
     // reference signal using phase accumulator (~400ns)
     unsigned long tuning_word = TUNING_DELTA * (1.0f + pll_loop_control);
     ref_phase_accu += tuning_word;
     uint8_t ref_phase_idx = ref_phase_accu >> 24;
     ref_signal = fsin256[ref_phase_idx];
-    
-    /*
-    Serial.print("Tuning word: ");
-    Serial.println(tuning_word);
-    Serial.println("Compare:");
-    Serial.println(ref_signal, 6);
-    Serial.println(ref_signal2, 6);
-    // */
 
     // quadrature signal
     ref_quad = fcos256[ref_phase_idx];
@@ -143,10 +128,45 @@ void loop()
     pll_lock1 = lock1_lowpass(-ref_quad   * out);
     pll_lock2 = lock2_lowpass(-ref_signal * out);
     pll_logic_lock = max(pll_lock1, pll_lock2) > LOCK_THRESHOLD;
-
-    out = max(pll_lock1, pll_lock2);
   }
   NRF_GPIO->OUTCLR = 1 << A2;
+
+  // state information
+  int8_t output_change = output_sign_diff(pll_output >= 0);
+  int8_t logic_change  = logic_lock_diff(pll_logic_lock ? 1 : 0);
+
+  // Demodulation
+  //- naive: detect the two zero-crossings of output sign difference series
+  if(logic_change == 1){
+    // lock just started
+    zx_count = 0;
+    
+  } else if(logic_change == -1){
+    // lock just ended
+
+    // did we get a valid estimate?
+    if(zx_count == 2){
+      timestamp_t chirp_center = (zx_times[0] + zx_times[1]) / 2; // XXX avoid loosing 1/2 precision
+      timestamps.push(chirp_center);
+    }
+    zx_count = 0;
+    
+  } else if(pll_logic_lock){
+    // we are locked
+    
+    // output_change in {-1, 0, +1}
+    if(output_change != 0){
+      
+      // count change events
+      ++zx_count;
+
+      // store timing
+      uint8_t which = (output_change + 1) / 2;
+      zx_times[which] = now;
+    }
+  }
+  
+  out = zx_count * 0.1f;
 
   // send result back
   uint16_t uout = SQ2x13(out).getInternal();

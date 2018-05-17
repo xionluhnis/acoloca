@@ -56,3 +56,29 @@ void test_pll(){
   
 }
 
+timestamp_t last = 0;
+
+void test_saadc_default(){
+  // analogReadResolution(8); // in setup
+  
+  timestamp_t now = micros();
+
+  last = now;
+
+  NRF_GPIO->OUTSET = 1 << A1;
+  uint8_t data = analogRead(A5);
+  NRF_GPIO->OUTCLR = 1 << A1;
+}
+
+void test_saadc_optimized(){
+  // analogReadResolution(8); // in setup
+  
+  timestamp_t now = micros();
+
+  last = now;
+
+  NRF_GPIO->OUTSET = 1 << A1;
+  uint8_t data = saadc_read();
+  NRF_GPIO->OUTCLR = 1 << A1;
+}
+

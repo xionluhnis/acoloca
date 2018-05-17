@@ -17,8 +17,6 @@ constexpr const uint16_t LED2 = 19;
 // filters
 NormalizationFilter<25> norm_filter;
 
-timestamp_t last = 0;
-
 /**************************************************************************/
 /*!
     @brief  The setup function runs once when reset the board
@@ -57,7 +55,6 @@ void setup()
 
   Serial.println("Start SAADC");
   saadc_start();
-  // analogReadResolution(8);
 }
 
 /**************************************************************************/
@@ -67,25 +64,8 @@ void setup()
 /**************************************************************************/
 void loop()
 {
-  /*
-  timestamp_t now = micros();
   // wait for some event
-  // __WFE();
-
-  NRF_GPIO->OUT ^= 1 << LED1;
-  //Serial.print("Sample: "); Serial.println(saadc_sample);
-  //Serial.print("Count:  "); Serial.println(saadc_sample_count);
-
-  // if(now - last < 20)
-  //   return;
-
-  last = now;
-
-  NRF_GPIO->OUTSET = 1 << A1;
-  //uint8_t data = analogRead(A5);
-  uint8_t data = saadc_read();
-  NRF_GPIO->OUTCLR = 1 << A1;
-  */
+  __WFE();
 }
 
 

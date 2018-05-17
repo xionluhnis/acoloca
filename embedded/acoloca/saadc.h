@@ -3,11 +3,11 @@
 
 #define SAADC_USE_EVENTS 1
 #define SAADC_ASAP 1
-#define SAADC_USE_PPI_FORK 0
+#define SAADC_USE_PPI_FORK 1
 
 // constants
 constexpr const uint16_t DESIRED_SAMPLE_RATE   = 60000; // 100kHz
-constexpr const unsigned long ACQUISITION_TIME = SAADC_CH_CONFIG_TACQ_5us;
+constexpr const unsigned long ACQUISITION_TIME = SAADC_CH_CONFIG_TACQ_10us;
 
 // data
 uint16_t saadc_buffer = 0;

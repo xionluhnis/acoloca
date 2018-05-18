@@ -165,14 +165,14 @@ extern "C" {
 void PWM0_IRQHandler(void){
   // time information
   long now = micros();
+
+  static uint16_t sampleIdx = 0;
   
   // check the event is a period end
   //NRF_GPIO->OUTSET = 1 << A1;
   //NRF_GPIO->OUT ^= 1 << A3;
   if(NRF_PWM0->EVENTS_PWMPERIODEND != 0){
     NRF_PWM0->EVENTS_PWMPERIODEND = 0; // clear interrupt
-
-    static uint16_t sampleIdx = 0;
 
     // time in chirp
     long dt = now - chirp.start_us;
@@ -202,34 +202,42 @@ void PWM0_IRQHandler(void){
   
       // update duty cycle from sine table
       chirp.cycle_duty = sin256[sine_idx];
+
+      // update DMA
+      NRF_PWM0->TASKS_SEQSTART[0] = 1;
       
     } else {
 
       // reset chirp
       chirp.phaccu = 0;
-      chirp.start_us = now;
       chirp.tuning_word = chirp.tuning_word_first;
       sampleIdx = 0;
 
       // stop chirp
-      chirp.cycle_duty = 0 | (1 << 15);
+      chirp.cycle_duty = 0; //  | (1 << 15);
       chirp_end();
       
       // out of chirp
       if(now + chirp.ref_period / 2 >= chirp.start_us + chirp.duration){
+        // chirp.start_us = now;
         // restart next period?
         // debug signal
         // NRF_GPIO->OUT ^= 1 << A4;
       }
+      
     }
-    // NRF_PWM0->TASKS_SEQSTART[0] = 1;
     
   } else if(NRF_PWM0->EVENTS_SEQSTARTED[0] != 0) {
     NRF_PWM0->EVENTS_SEQSTARTED[0] = 0;
 
     if(chirp.start_us == 0){
-      // beginning of chirp
+      // set chirp start
       chirp.start_us = now;
+      
+      // reset chirp
+      chirp.phaccu = 0;
+      chirp.tuning_word = chirp.tuning_word_first;
+      sampleIdx = 0;
     }
   }
   //NRF_GPIO->OUTCLR = 1 << A1;

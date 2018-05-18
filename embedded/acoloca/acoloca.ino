@@ -30,7 +30,7 @@ void setup()
   Serial.println("Generating sin/cos tables");
   init_sinetables(1);
 
-  Serial.println("Setup chirp");
+  Serial.println("Initializing Chirp/PWM");
   chirp_setup();
 
   // initialize SAADC
@@ -46,11 +46,18 @@ enum State {
   IDLE,
   LISTENING,
   EMITTING
-} state = IDLE, last_state = IDLE;
+};
+volatile State curr_state = IDLE;
+volatile State last_state = IDLE;
 
 void reset_to_idle(){
-  last_state = state;
-  state = IDLE;
+  // might be called multiple times
+  if(curr_state == IDLE)
+    return;
+
+  // save previous state
+  last_state = curr_state;
+  curr_state = IDLE;
 }
 
 unsigned long state_start = 0;
@@ -63,21 +70,21 @@ unsigned long state_start = 0;
 void loop()
 {
   unsigned long now = micros();
-  if(state != IDLE){
+  if(curr_state != IDLE){
 
-    if(state == LISTENING){
+    if(curr_state == LISTENING){
       NRF_GPIO->OUTCLR = 1 << LED1;
       NRF_GPIO->OUT   ^= 1 << LED2;
-    } else if(state == EMITTING){
+    } else if(curr_state == EMITTING){
       NRF_GPIO->OUTCLR = 1 << LED2;
       NRF_GPIO->OUT   ^= 1 << LED1;
     }
 
     // switch back to idle if waiting for too long
     if(now - state_start >= 2000000UL) {
-      if(state == LISTENING)
+      if(curr_state == LISTENING)
         saadc_end();
-      else if(state == EMITTING)
+      else if(curr_state == EMITTING)
         chirp_end();
       reset_to_idle();
 
@@ -98,7 +105,7 @@ void loop()
       case 'e':
       case '!':
         // switch to chirp mode
-        state = EMITTING;
+        curr_state = EMITTING;
         chirp_start(&reset_to_idle);
         state_start = now;
         break;
@@ -106,7 +113,7 @@ void loop()
       case 'l':
       case '?':
         // switch to listening mode
-        state = LISTENING;
+        curr_state = LISTENING;
         saadc_start(&reset_to_idle);
         state_start = now;
         break;
@@ -114,10 +121,15 @@ void loop()
       case 'g':
       case '.':
         // send timing information
-        if(last_state == EMITTING)
-          Serial.println(chirp.start_us);
-        else if(last_state == LISTENING)
-          Serial.println(timestamps.first());
+        if(last_state == EMITTING){
+          Serial.println("Emitting time:");
+          Serial.println(chirp.start_us, DEC);
+        }else if(last_state == LISTENING){
+          Serial.println("Receiving time:");
+          Serial.println(timestamps.first(), DEC);
+        } else {
+          Serial.println("Only idle");
+        }
         break;
     }
     

@@ -89,8 +89,11 @@ void pll_run(float input){
 
 /**
  * PLL demodulation
+ * 
+ * @param now current sample's acquisition timestamp
+ * @return whether demodulation found a chirp timing
  */
-void pll_demod(const timestamp_t &now){
+bool pll_demod(const timestamp_t &now){
 
   // state information
   int8_t output_change = output_sign_diff(pll_output >= 0);
@@ -111,6 +114,8 @@ void pll_demod(const timestamp_t &now){
       timestamps.push(chirp_center);
     }
     zx_count = 0;
+
+    return zx_count >= 2;
     
   } else if(pll_logic_lock){
     // we are locked
@@ -126,5 +131,7 @@ void pll_demod(const timestamp_t &now){
       zx_times[which] = now;
     }
   }
+
+  return false;
 }
 

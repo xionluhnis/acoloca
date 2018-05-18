@@ -1,6 +1,8 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 #pragma once
 
+#include "pll.h"
+
 #define SAADC_USE_EVENTS 1
 #define SAADC_ASAP 1
 #define SAADC_USE_PPI_FORK 1
@@ -13,6 +15,9 @@ constexpr const unsigned long ACQUISITION_TIME = SAADC_CH_CONFIG_TACQ_10us;
 uint16_t saadc_buffer = 0;
 volatile uint8_t  saadc_sample = 0;
 volatile uint32_t saadc_sample_count = 0;
+
+// filters
+NormalizationFilter<25> norm_filter;
 
 /**
  * Setup SAADC registers
@@ -61,8 +66,8 @@ void saadc_setup() {
   NRF_SAADC->RESULT.MAXCNT = 1; // One sample
 
   // select pin
-  NRF_SAADC->CH[0].PSELN = SAADC_CH_PSELP_PSELP_AnalogInput5;
-  NRF_SAADC->CH[0].PSELP = SAADC_CH_PSELP_PSELP_AnalogInput5;
+  NRF_SAADC->CH[0].PSELN = SAADC_CH_PSELP_PSELP_AnalogInput0;
+  NRF_SAADC->CH[0].PSELP = SAADC_CH_PSELP_PSELP_AnalogInput0;
 
   // set analog pin configuration
   // according to errata 74 this must be the last thing before enable
@@ -141,7 +146,15 @@ void saadc_setup() {
   */
 }
 
-void saadc_start() {
+void (*saadc_callback)();
+
+void saadc_start(void (*callback)()) {
+
+  // store callback
+  saadc_callback = callback;
+  
+  Serial.println("Starting SAADC");
+  
   NVIC_ClearPendingIRQ(SAADC_IRQn);
   NVIC_EnableIRQ(SAADC_IRQn);
 
@@ -196,6 +209,8 @@ void saadc_end() {
   
   NRF_SAADC->TASKS_STOP = 0x01UL;
   NRF_PPI->CHENCLR   = PPI_CHEN_CH0_Enabled << PPI_CHEN_CH0_Pos;
+
+  saadc_callback();
 }
 
 extern "C" {
@@ -203,23 +218,33 @@ extern "C" {
 void SAADC_IRQHandler(void){
   
   if(NRF_SAADC->EVENTS_END != 0){
-    NRF_GPIO->OUTSET = 1 << A1;
-    NRF_GPIO->OUT ^= 1 << A3;
+    // NRF_GPIO->OUTSET = 1 << A1;
+    // NRF_GPIO->OUT ^= 1 << A3;
+
+    unsigned long now = micros();
     
     NRF_SAADC->EVENTS_END = 0; // clear interrupt
 
-    // transfer sample
-    saadc_sample = saadc_buffer;
-    ++saadc_sample_count;
+    // get sample
+    uint8_t sample = saadc_buffer;
 
-    // XXX trigger PLL from here
-
+    // filter data (~2us, peaks at 6.5us)
+    float out = norm_filter(sample);
+    
+    // run PLL loop (4.6us)
+    pll_run(out);
+    
+    // demodulation (1.2us)
+    if(pll_demod(now)){
+      // we can stop listening
+      saadc_end();
+    }
 
     // ask for more samples
     // NRF_SAADC->TASKS_START = 0x01UL;
     // NRF_SAADC->TASKS_SAMPLE = 0x01UL;
 
-    NRF_GPIO->OUTCLR = 1 << A1;
+    // NRF_GPIO->OUTCLR = 1 << A1;
   }
 #if !SAADC_USE_PPI_FORK
   else if(NRF_SAADC->EVENTS_STARTED != 0){

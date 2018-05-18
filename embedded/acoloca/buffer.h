@@ -15,6 +15,9 @@ struct FilterBuffer {
   inline const Type &operator[](PointerType i) const {
     return data[(Size - 1 - i + pointer) % Size];
   }
+  inline Type &first() {
+    return pointer == 0 ? data[Size-1] : data[pointer-1];
+  }
   inline Type &last() {
     return data[pointer]; // returns 0 until buffer is full
   }

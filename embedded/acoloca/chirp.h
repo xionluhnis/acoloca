@@ -74,73 +74,6 @@ typedef struct Chirp {
 // chirp instance
 chirp_t chirp(1100, 1000, 1e6, 16000000, 30920);
 
-extern "C" {
-
-// takes ~9us to ~15us
-void PWM0_IRQHandler(void){
-  // check the event is a period end
-  NRF_GPIO->OUTSET = 1 << A1;
-  NRF_GPIO->OUT ^= 1 << A3;
-  if(NRF_PWM0->EVENTS_PWMPERIODEND != 0){
-    NRF_PWM0->EVENTS_PWMPERIODEND = 0; // clear interrupt
-
-    static uint16_t sampleIdx = 0;
-
-    // time information
-    long current = micros();
-    // long current = xTaskGetTickCountFromISR(); // better version for IRQ handler?
-    long dt = current - chirp.start_us;
-
-    // chirp on/off
-    if(dt < chirp.duration_on){
-
-      // 32bits phase accumulator
-      if(sampleIdx++ >= chirp.cycles_per_half_chirp){
-        chirp.tuning_word -= chirp.tuning_word_delta;
-      } else {
-        chirp.tuning_word += chirp.tuning_word_delta;
-      }
-      chirp.phaccu += chirp.tuning_word;
-  
-      // frequency debug
-      static uint8_t last_idx = 0;
-  
-      // use most significant 8 bits as frequency information
-      uint8_t sine_idx = chirp.phaccu >> 24;
-      if(sine_idx < last_idx){
-        NRF_GPIO->OUT ^= 1 << A2; // toggle to get period / frequency
-      }
-      last_idx = sine_idx;
-      
-  
-      // update duty cycle from sine table
-      chirp.cycle_duty = sin256[sine_idx];
-      
-    } else {
-      
-      // out of chirp
-      if(current + chirp.ref_period / 2 >= chirp.start_us + chirp.duration){
-        // we should restart chirp on next iteration
-        chirp.phaccu = 0;
-        chirp.start_us = current;
-        chirp.tuning_word = chirp.tuning_word_first;
-        sampleIdx = 0;
-        // debug signal
-        NRF_GPIO->OUT ^= 1 << A4;
-      } else {
-        // off-chirp
-        chirp.cycle_duty = 0 | (1 << 15);
-      }
-    }
-
-    // update DMA
-    NRF_PWM0->TASKS_SEQSTART[0] = 1;
-  }
-  NRF_GPIO->OUTCLR = 1 << A1;
-}
-
-}
-
 void chirp_setup(){
 
   Serial.println("Chirp info:");
@@ -163,14 +96,16 @@ void chirp_setup(){
     CHIRP_INFO(tuning_word_delta);
   }
 
+  /*
   Serial.println("Initializing GPIO");
   NRF_GPIO->DIRSET = 1 << A1; // IRQ timing (to check sanity)
   NRF_GPIO->DIRSET = 1 << A2; // phase 8-bit overflow (to measure frequency)
   NRF_GPIO->DIRSET = 1 << A3; // real pwm frequency (to tune reference frequency)
   NRF_GPIO->DIRSET = 1 << A4; // chirp duration
+  */
 
   Serial.println("Initializing PWM");
-  NRF_PWM0->PSEL.OUT[0] = (A0 << PWM_PSEL_OUT_PIN_Pos) | (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);
+  NRF_PWM0->PSEL.OUT[0] = (A1 << PWM_PSEL_OUT_PIN_Pos) | (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);
   NRF_PWM0->ENABLE = (PWM_ENABLE_ENABLE_Enabled << PWM_ENABLE_ENABLE_Pos);
   NRF_PWM0->MODE = (PWM_MODE_UPDOWN_UpAndDown << PWM_MODE_UPDOWN_Pos);
   Serial.print("Prescaler: ");
@@ -190,8 +125,10 @@ void chirp_setup(){
   NRF_PWM0->SEQ[1].ENDDELAY = 0;
 
   Serial.println("Initializing events");
-  NRF_PWM0->EVENTS_PWMPERIODEND = 0;
-  NRF_PWM0->INTENSET = (PWM_INTENSET_PWMPERIODEND_Enabled << PWM_INTENSET_PWMPERIODEND_Pos);
+  NRF_PWM0->EVENTS_SEQSTARTED[0] = 0;
+  NRF_PWM0->EVENTS_PWMPERIODEND  = 0;
+  NRF_PWM0->INTENSET = (PWM_INTENSET_PWMPERIODEND_Enabled << PWM_INTENSET_PWMPERIODEND_Pos)
+                     | (PWM_INTENSET_SEQSTARTED0_Enabled << PWM_INTENSET_SEQSTARTED0_Pos);
 
   Serial.println("Initializing IRQ");
   NVIC_SetPriority(PWM0_IRQn, 0); //low priority
@@ -199,15 +136,103 @@ void chirp_setup(){
   NVIC_EnableIRQ(PWM0_IRQn);
 }
 
-void chirp_start() {
+void (*chirp_callback)();
+
+void chirp_start(void (*callback)()) {
+
+  // store callback
+  chirp_callback = callback;
   
   Serial.println("Starting chirp");
   chirp.cycle_duty = sin256[0];
-  chirp.start_us = micros();
+  chirp.start_us = 0; // micros();
   
   NRF_PWM0->TASKS_SEQSTART[0] = 1;
 }
 
 void chirp_end() {
+
+  NRF_PWM0->TASKS_STOP = 1;
+
+  Serial.println("Chirp ended");
+
+  chirp_callback();
+}
+
+extern "C" {
+
+// takes ~9us to ~15us
+void PWM0_IRQHandler(void){
+  // time information
+  long now = micros();
+  
+  // check the event is a period end
+  //NRF_GPIO->OUTSET = 1 << A1;
+  //NRF_GPIO->OUT ^= 1 << A3;
+  if(NRF_PWM0->EVENTS_PWMPERIODEND != 0){
+    NRF_PWM0->EVENTS_PWMPERIODEND = 0; // clear interrupt
+
+    static uint16_t sampleIdx = 0;
+
+    // time in chirp
+    long dt = now - chirp.start_us;
+
+    // chirp on/off
+    if(dt < chirp.duration_on){
+
+      // 32bits phase accumulator
+      if(sampleIdx++ >= chirp.cycles_per_half_chirp){
+        chirp.tuning_word -= chirp.tuning_word_delta;
+      } else {
+        chirp.tuning_word += chirp.tuning_word_delta;
+      }
+      chirp.phaccu += chirp.tuning_word;
+  
+      // use most significant 8 bits as frequency information
+      uint8_t sine_idx = chirp.phaccu >> 24;
+      
+      /*
+      // frequency debug
+      static uint8_t last_idx = 0;
+      if(sine_idx < last_idx){
+        NRF_GPIO->OUT ^= 1 << A2; // toggle to get period / frequency
+      }
+      last_idx = sine_idx;
+      */
+  
+      // update duty cycle from sine table
+      chirp.cycle_duty = sin256[sine_idx];
+      
+    } else {
+
+      // reset chirp
+      chirp.phaccu = 0;
+      chirp.start_us = now;
+      chirp.tuning_word = chirp.tuning_word_first;
+      sampleIdx = 0;
+
+      // stop chirp
+      chirp.cycle_duty = 0 | (1 << 15);
+      chirp_end();
+      
+      // out of chirp
+      if(now + chirp.ref_period / 2 >= chirp.start_us + chirp.duration){
+        // restart next period?
+        // debug signal
+        // NRF_GPIO->OUT ^= 1 << A4;
+      }
+    }
+    // NRF_PWM0->TASKS_SEQSTART[0] = 1;
+    
+  } else if(NRF_PWM0->EVENTS_SEQSTARTED[0] != 0) {
+    NRF_PWM0->EVENTS_SEQSTARTED[0] = 0;
+
+    if(chirp.start_us == 0){
+      // beginning of chirp
+      chirp.start_us = now;
+    }
+  }
+  //NRF_GPIO->OUTCLR = 1 << A1;
+}
 
 }

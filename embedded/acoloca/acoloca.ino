@@ -14,9 +14,6 @@
 constexpr const uint16_t LED1 = 17;
 constexpr const uint16_t LED2 = 19;
 
-// filters
-NormalizationFilter<25> norm_filter;
-
 /**************************************************************************/
 /*!
     @brief  The setup function runs once when reset the board
@@ -33,17 +30,8 @@ void setup()
   Serial.println("Generating sin/cos tables");
   init_sinetables(1);
 
-  /*
   Serial.println("Setup chirp");
   chirp_setup();
-  */
-  
-  Serial.println("Initializing GPIO");
-  NRF_GPIO->DIRSET = 1 << A1; // IRQ timing (to check sanity)
-  NRF_GPIO->DIRSET = 1 << A2; // phase 8-bit overflow (to measure frequency)
-  NRF_GPIO->DIRSET = 1 << A3; // real pwm frequency (to tune reference frequency)
-  NRF_GPIO->DIRSET = 1 << A4; // chirp duration
-  NRF_GPIO->OUTCLR = 1 << A1 | 1 << A2 | 1 << A3 | 1 << A4;
 
   // initialize SAADC
   Serial.println("Initializing SAADC");
@@ -52,10 +40,20 @@ void setup()
   // initialize pll
   Serial.println("Initializing PLL");
   pll_setup();
-
-  Serial.println("Start SAADC");
-  saadc_start();
 }
+
+enum State {
+  IDLE,
+  LISTENING,
+  EMITTING
+} state = IDLE, last_state = IDLE;
+
+void reset_to_idle(){
+  last_state = state;
+  state = IDLE;
+}
+
+unsigned long state_start = 0;
 
 /**************************************************************************/
 /*!
@@ -64,8 +62,66 @@ void setup()
 /**************************************************************************/
 void loop()
 {
-  // wait for some event
-  __WFE();
+  unsigned long now = micros();
+  if(state != IDLE){
+
+    if(state == LISTENING){
+      NRF_GPIO->OUTCLR = 1 << LED1;
+      NRF_GPIO->OUT   ^= 1 << LED2;
+    } else if(state == EMITTING){
+      NRF_GPIO->OUTCLR = 1 << LED2;
+      NRF_GPIO->OUT   ^= 1 << LED1;
+    }
+
+    // switch back to idle if waiting for too long
+    if(now - state_start >= 2000000UL) {
+      if(state == LISTENING)
+        saadc_end();
+      else if(state == EMITTING)
+        chirp_end();
+      reset_to_idle();
+
+      Serial.println("Switched back to idle");
+      
+    } else
+      __WFE();
+    
+  } else {
+
+    NRF_GPIO->OUTCLR = 1 << LED1 | 1 << LED2;
+
+    // listen for commands
+    char c = Serial.read();
+    switch(c){
+      
+      case 'c':
+      case 'e':
+      case '!':
+        // switch to chirp mode
+        state = EMITTING;
+        chirp_start(&reset_to_idle);
+        state_start = now;
+        break;
+        
+      case 'l':
+      case '?':
+        // switch to listening mode
+        state = LISTENING;
+        saadc_start(&reset_to_idle);
+        state_start = now;
+        break;
+        
+      case 'g':
+      case '.':
+        // send timing information
+        if(last_state == EMITTING)
+          Serial.println(chirp.start_us);
+        else if(last_state == LISTENING)
+          Serial.println(timestamps.first());
+        break;
+    }
+    
+  }
 }
 
 

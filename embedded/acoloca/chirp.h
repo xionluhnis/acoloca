@@ -136,12 +136,14 @@ void chirp_setup(){
   NVIC_EnableIRQ(PWM0_IRQn);
 }
 
-void (*chirp_callback)();
+void (*chirp_start_callback)();
+void (*chirp_end_callback)();
 
-void chirp_start(void (*callback)()) {
+void chirp_start(void (*start_callback)(), void (*end_callback)()) {
 
   // store callback
-  chirp_callback = callback;
+  chirp_start_callback = start_callback;
+  chirp_end_callback = end_callback;
   
   Serial.println("Starting chirp");
   chirp.cycle_duty = sin256[0];
@@ -156,7 +158,7 @@ void chirp_end() {
 
   Serial.println("Chirp ended");
 
-  chirp_callback();
+  chirp_end_callback();
 }
 
 extern "C" {
@@ -231,6 +233,9 @@ void PWM0_IRQHandler(void){
     NRF_PWM0->EVENTS_SEQSTARTED[0] = 0;
 
     if(chirp.start_us == 0){
+      // only first time
+      chirp_start_callback();
+
       // set chirp start
       chirp.start_us = now;
       

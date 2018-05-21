@@ -10,9 +10,13 @@
 #include "filters.h"
 #include "pll.h"
 #include "saadc.h"
+#include "sync.h"
 
 constexpr const uint16_t LED1 = 17;
 constexpr const uint16_t LED2 = 19;
+
+void on_sync_start();
+void on_sync_end();
 
 /**************************************************************************/
 /*!
@@ -40,6 +44,13 @@ void setup()
   // initialize pll
   Serial.println("Initializing PLL");
   pll_setup();
+
+  // initialize synchronization
+  Serial.println("Initializing Sync");
+  sync_setup(&on_sync_start);
+
+  // start directly to listen for sync
+  sync_listen(&on_sync_end);
 }
 
 enum State {
@@ -58,9 +69,14 @@ void reset_to_idle(){
   // save previous state
   last_state = curr_state;
   curr_state = IDLE;
+
+  // restart listening for sync
+  sync_listen(&on_sync_end);
 }
 
 unsigned long state_start = 0;
+unsigned long sync_timestamp = 0;
+unsigned long sync_count = 0;
 
 /**************************************************************************/
 /*!
@@ -104,14 +120,18 @@ void loop()
       case 'c':
       case 'e':
       case '!':
+        // start synchronization
+        sync_start();
+
         // switch to chirp mode
         curr_state = EMITTING;
-        chirp_start(&reset_to_idle);
+        chirp_start(&sync_end, &reset_to_idle);
         state_start = now;
         break;
         
       case 'l':
       case '?':
+
         // switch to listening mode
         curr_state = LISTENING;
         saadc_start(&reset_to_idle);
@@ -131,12 +151,36 @@ void loop()
           Serial.println("Only idle");
         }
         break;
+
+      case 't':
+        // send synchronization information
+        Serial.println(sync_timestamp, DEC);
+        break;
+
+      case 'T':
+        // send synchronization count
+        Serial.println(sync_count, DEC);
+        break;
+
     }
     
   }
 }
 
+void on_sync_start() {
+  // possible RACE condition with state change from UART?
+  if(curr_state == IDLE){
+    curr_state = LISTENING;
+    saadc_start(&reset_to_idle);
+    state_start = now;
+  }
+}
 
+void on_sync_end() {
+  // record starting time
+  sync_timestamp = micros();
+  ++sync_count;
+}
 
 
 

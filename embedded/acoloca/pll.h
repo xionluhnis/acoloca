@@ -9,14 +9,14 @@
 typedef unsigned long timestamp_t;
 
 // constants
-const float PLL_GAIN = 0.1;
-const float REF_FREQ = 1050;
-const float REF_OMEGA = 2.0 * M_PI * REF_FREQ;
-const float SAMPLE_RATE = 60000; // 8704
-const float SAMPLE_PERIOD = 1.0 / SAMPLE_RATE;
-const double N_SAMPLES = 1ULL << 32; // /!\ needs 1ULL, 1UL overflows
-const unsigned long TUNING_DELTA = N_SAMPLES * REF_FREQ / SAMPLE_RATE;
-const float LOCK_THRESHOLD = 0.2;
+constexpr const float PLL_GAIN = 0.1;
+constexpr const float REF_FREQ = 1050;
+constexpr const float REF_OMEGA = 2.0 * M_PI * REF_FREQ;
+constexpr const float SAMPLE_RATE = 60000; // 8704
+constexpr const float SAMPLE_PERIOD = 1.0 / SAMPLE_RATE;
+constexpr const double N_SAMPLES = 1ULL << 32; // /!\ needs 1ULL, 1UL overflows
+constexpr const unsigned long TUNING_DELTA = N_SAMPLES * REF_FREQ / SAMPLE_RATE;
+constexpr const float LOCK_THRESHOLD = 0.2;
 
 // filters
 BiquadFilter<float> output_lowpass = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
@@ -44,6 +44,7 @@ unsigned long ref_phase_accu = 0;
 uint8_t zx_count = 0;
 timestamp_t zx_times[2];
 FilterBuffer<timestamp_t, 10> timestamps;
+bool timestamp_new = false;
 
 /**
  * Initialize PLL
@@ -82,7 +83,11 @@ void pll_run(float input){
   pll_lock1 = lock1_lowpass(-ref_quad   * input);
   pll_lock2 = lock2_lowpass(-ref_signal * input);
   pll_logic_lock = max(pll_lock1, pll_lock2) > LOCK_THRESHOLD;
-    
+
+  if(pll_logic_lock)
+    NRF_GPIO->OUTSET = 1 << A3;
+  else
+    NRF_GPIO->OUTCLR = 1 << A3;
   // NRF_GPIO->OUTCLR = 1 << A2;
   
 }
@@ -112,6 +117,7 @@ bool pll_demod(const timestamp_t &now){
     if(zx_count == 2){
       timestamp_t chirp_center = (zx_times[0] + zx_times[1]) / 2; // XXX avoid loosing 1/2 precision
       timestamps.push(chirp_center);
+      timestamp_new = true;
     }
     zx_count = 0;
 

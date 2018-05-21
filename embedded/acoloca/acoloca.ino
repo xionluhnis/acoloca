@@ -32,7 +32,7 @@ void setup()
   Serial.println("################");
   
   Serial.println("Generating sin/cos tables");
-  init_sinetables(0.05);
+  init_sinetables(0.1);
 
   Serial.println("Initializing Chirp/PWM");
   chirp_setup();
@@ -156,7 +156,15 @@ void loop()
           Serial.println(chirp.start_us, DEC);
         }else if(last_state == LISTENING){
           Serial.println("Receiving time:");
+          Serial.print("- start: ");
+          Serial.println(sync_timestamp, DEC);
+          Serial.print("- middle: ");
           Serial.println(timestamps.first(), DEC);
+          Serial.print("- delta: ");
+          Serial.println(timestamps.first() - sync_timestamp, DEC);
+          Serial.print("- valid: ");
+          Serial.println(timestamp_new ? "true" : "false");
+          timestamp_new = false;
         } else {
           Serial.println("Only idle");
         }

@@ -8,8 +8,9 @@
 #define SAADC_USE_PPI_FORK 1
 
 // constants
-constexpr const uint16_t DESIRED_SAMPLE_RATE   = 60000; // 100kHz
-constexpr const unsigned long ACQUISITION_TIME = SAADC_CH_CONFIG_TACQ_10us;
+constexpr const unsigned long DESIRED_SAMPLE_RATE = 60000; // 100kHz
+constexpr const unsigned long ACQUISITION_TIME    = SAADC_CH_CONFIG_TACQ_10us;
+constexpr const uint16_t NORM_SAMPLES = ceil(3 * SAMPLE_RATE / REF_FREQ);
 
 // data
 uint16_t saadc_buffer = 0;
@@ -17,7 +18,7 @@ volatile uint8_t  saadc_sample = 0;
 volatile uint32_t saadc_sample_count = 0;
 
 // filters
-NormalizationFilter<25> norm_filter;
+NormalizationFilter<NORM_SAMPLES> norm_filter;
 
 /**
  * Setup SAADC registers
@@ -210,7 +211,7 @@ extern "C" {
 void SAADC_IRQHandler(void){
   
   if(NRF_SAADC->EVENTS_END != 0){
-    NRF_GPIO->OUTSET = 1 << A3;
+    // NRF_GPIO->OUTSET = 1 << A3;
     // NRF_GPIO->OUT ^= 1 << A3;
 
     unsigned long now = micros();
@@ -222,6 +223,12 @@ void SAADC_IRQHandler(void){
 
     // filter data (~2us, peaks at 6.5us)
     float out = norm_filter(sample);
+    /*
+    if(out > 0.2)
+      NRF_GPIO->OUTSET = 1 << A3;
+    else
+      NRF_GPIO->OUTCLR = 1 << A3;
+    */
     
     // run PLL loop (4.6us)
     pll_run(out);
@@ -236,7 +243,7 @@ void SAADC_IRQHandler(void){
     // NRF_SAADC->TASKS_START = 0x01UL;
     // NRF_SAADC->TASKS_SAMPLE = 0x01UL;
 
-    NRF_GPIO->OUTCLR = 1 << A3;
+    // NRF_GPIO->OUTCLR = 1 << A3;
   }
 #if !SAADC_USE_PPI_FORK
   else if(NRF_SAADC->EVENTS_STARTED != 0){

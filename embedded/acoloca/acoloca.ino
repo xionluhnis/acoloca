@@ -166,6 +166,7 @@ void loop()
         Serial.println(sync_count, DEC);
         break;
 
+
     }
     
   }

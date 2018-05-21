@@ -7,7 +7,7 @@ void sync_noop(){
 }
 
 bool sync_started = false;
-int  sync_pin = A3;
+int  sync_pin = A2;
 
 void (*sync_onstart_callback)();
 void (*sync_onend_callback)();
@@ -43,7 +43,7 @@ void sync_end() {
 
 void sync_listen(void (*callback)()) {
 
-  started = false;
+  sync_started = false;
   // store callback
   sync_onend_callback = callback;
   
@@ -66,16 +66,16 @@ void GPIOTE_IRQHandler(void){
   if(NRF_GPIOTE->EVENTS_IN[0] != 0){
     NRF_GPIOTE->EVENTS_IN[0] = 0;
 
-    if(!started){
+    if(!sync_started){
       // NRF_GPIO->IN & (A3 << 1))
       // triggered up
-      started = true;
+      sync_started = true;
       sync_onstart_callback();
 
     } else {
       // triggered down
       sync_onend_callback();
-      started = false;
+      sync_started = false;
     }
 
   }

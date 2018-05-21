@@ -32,7 +32,7 @@ void setup()
   Serial.println("################");
   
   Serial.println("Generating sin/cos tables");
-  init_sinetables(1);
+  init_sinetables(0.05);
 
   Serial.println("Initializing Chirp/PWM");
   chirp_setup();
@@ -122,7 +122,11 @@ void loop()
       case '!':
         // start synchronization
         sync_start();
-
+        // some delay, quite important:
+        // - to allow a signal to be generated (otherwise pulse is not visible)
+        // - to allow other nodes to catch the signal
+        delay(100);
+        
         // switch to chirp mode
         curr_state = EMITTING;
         chirp_start(&sync_end, &reset_to_idle);
@@ -170,9 +174,9 @@ void loop()
 void on_sync_start() {
   // possible RACE condition with state change from UART?
   if(curr_state == IDLE){
+    state_start = micros();
     curr_state = LISTENING;
     saadc_start(&reset_to_idle);
-    state_start = now;
   }
 }
 

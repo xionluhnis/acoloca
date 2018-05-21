@@ -98,10 +98,10 @@ void chirp_setup(){
 
   /*
   Serial.println("Initializing GPIO");
-  NRF_GPIO->DIRSET = 1 << A1; // IRQ timing (to check sanity)
-  NRF_GPIO->DIRSET = 1 << A2; // phase 8-bit overflow (to measure frequency)
-  NRF_GPIO->DIRSET = 1 << A3; // real pwm frequency (to tune reference frequency)
-  NRF_GPIO->DIRSET = 1 << A4; // chirp duration
+  // NRF_GPIO->DIRSET = 1 << A1; // IRQ timing (to check sanity)
+  // NRF_GPIO->DIRSET = 1 << A2; // phase 8-bit overflow (to measure frequency)
+  // NRF_GPIO->DIRSET = 1 << A3; // real pwm frequency (to tune reference frequency)
+  // NRF_GPIO->DIRSET = 1 << A4; // chirp duration
   */
 
   Serial.println("Initializing PWM");
@@ -197,7 +197,7 @@ void PWM0_IRQHandler(void){
       // frequency debug
       static uint8_t last_idx = 0;
       if(sine_idx < last_idx){
-        NRF_GPIO->OUT ^= 1 << A2; // toggle to get period / frequency
+      // NRF_GPIO->OUT ^= 1 << A2; // toggle to get period / frequency
       }
       last_idx = sine_idx;
       */

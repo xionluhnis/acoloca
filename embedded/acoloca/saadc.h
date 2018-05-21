@@ -4,7 +4,7 @@
 #include "pll.h"
 
 #define SAADC_USE_EVENTS 1
-#define SAADC_ASAP 1
+#define SAADC_ASAP 0
 #define SAADC_USE_PPI_FORK 1
 
 // constants
@@ -165,15 +165,6 @@ void saadc_start(void (*callback)()) {
   NRF_SAADC->INTENSET = (SAADC_INTENSET_STARTED_Enabled << SAADC_INTENSET_STARTED_Pos);
 #endif
 
-  /*
-  NRF_SAADC->TASKS_START = 0x01UL;
-
-  while (!NRF_SAADC->EVENTS_STARTED);
-  NRF_SAADC->EVENTS_STARTED = 0x00UL;
-
-  NRF_SAADC->TASKS_SAMPLE = 0x01UL;
-  */
-
 #if SAADC_ASAP
   NRF_SAADC->TASKS_START = 1;
   while (!NRF_SAADC->EVENTS_STARTED);
@@ -183,6 +174,7 @@ void saadc_start(void (*callback)()) {
 #else
   NRF_TIMER1->TASKS_START = 1;
 #endif
+  NRF_PPI->CHENSET   = PPI_CHEN_CH0_Enabled << PPI_CHEN_CH0_Pos;
 }
 
 uint8_t saadc_read() {
@@ -218,7 +210,7 @@ extern "C" {
 void SAADC_IRQHandler(void){
   
   if(NRF_SAADC->EVENTS_END != 0){
-    // NRF_GPIO->OUTSET = 1 << A1;
+    NRF_GPIO->OUTSET = 1 << A3;
     // NRF_GPIO->OUT ^= 1 << A3;
 
     unsigned long now = micros();
@@ -244,7 +236,7 @@ void SAADC_IRQHandler(void){
     // NRF_SAADC->TASKS_START = 0x01UL;
     // NRF_SAADC->TASKS_SAMPLE = 0x01UL;
 
-    // NRF_GPIO->OUTCLR = 1 << A1;
+    NRF_GPIO->OUTCLR = 1 << A3;
   }
 #if !SAADC_USE_PPI_FORK
   else if(NRF_SAADC->EVENTS_STARTED != 0){

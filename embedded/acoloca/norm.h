@@ -56,7 +56,7 @@ struct NormalizationFilter {
   OutputType operator()(const InputType &x){
     // SQ2x13 = 8-13us
     // float  = 2-8us
-    NRF_GPIO->OUTSET = 1 << A1;
+    // NRF_GPIO->OUTSET = 1 << A1;
     
     //- update buffer
     // NRF_GPIO->OUTSET = 1 << A2;
@@ -99,7 +99,7 @@ struct NormalizationFilter {
       return OutputType(x_cent);
     }
 
-    NRF_GPIO->OUTCLR = 1 << A1;
+    // NRF_GPIO->OUTCLR = 1 << A1;
   }
   
 private:

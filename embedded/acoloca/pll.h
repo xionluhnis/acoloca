@@ -12,7 +12,7 @@ typedef unsigned long timestamp_t;
 const float PLL_GAIN = 0.1;
 const float REF_FREQ = 1050;
 const float REF_OMEGA = 2.0 * M_PI * REF_FREQ;
-const float SAMPLE_RATE = 8704;
+const float SAMPLE_RATE = 60000; // 8704
 const float SAMPLE_PERIOD = 1.0 / SAMPLE_RATE;
 const double N_SAMPLES = 1ULL << 32; // /!\ needs 1ULL, 1UL overflows
 const unsigned long TUNING_DELTA = N_SAMPLES * REF_FREQ / SAMPLE_RATE;
@@ -63,7 +63,7 @@ void pll_setup() {
 void pll_run(float input){
 
   // PLL (~3.8us)
-  NRF_GPIO->OUTSET = 1 << A2;
+  // NRF_GPIO->OUTSET = 1 << A2;
   
   // pase detector and filters
   pll_loop_control = input * ref_signal * PLL_GAIN; // ~250ns
@@ -83,7 +83,7 @@ void pll_run(float input){
   pll_lock2 = lock2_lowpass(-ref_signal * input);
   pll_logic_lock = max(pll_lock1, pll_lock2) > LOCK_THRESHOLD;
     
-  NRF_GPIO->OUTCLR = 1 << A2;
+  // NRF_GPIO->OUTCLR = 1 << A2;
   
 }
 

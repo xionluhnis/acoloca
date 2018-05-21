@@ -49,6 +49,12 @@ void setup()
   Serial.println("Initializing Sync");
   sync_setup(&on_sync_start);
 
+  // GPIO for debug
+  NRF_GPIO->DIRSET = 1 << A3;
+  NRF_GPIO->DIRSET = 1 << A4;
+  NRF_GPIO->DIRSET = 1 << A5;
+  NRF_GPIO->OUTCLR = 1 << A3 | 1 << A4 | 1 << A5;
+
   // start directly to listen for sync
   sync_listen(&on_sync_end);
 }

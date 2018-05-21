@@ -58,6 +58,7 @@ void sync_listen(void (*callback)()) {
 
   // set gpio
   NRF_GPIO->DIRCLR = 1 << sync_pin;
+  NRF_GPIO->PIN_CNF[sync_pin] |= GPIO_PIN_CNF_PULL_Pulldown << GPIO_PIN_CNF_PULL_Pos;
   
   // enable events
   NVIC_ClearPendingIRQ(GPIOTE_IRQn);
@@ -77,7 +78,6 @@ void GPIOTE_IRQHandler(void){
     NRF_GPIOTE->EVENTS_IN[0] = 0;
 
     if(!sync_started){
-      // NRF_GPIO->IN & (A3 << 1))
       // triggered up
       sync_started = true;
       sync_onstart_callback();

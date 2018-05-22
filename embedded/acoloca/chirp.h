@@ -2,6 +2,7 @@
 #pragma once
 
 #include "sine.h"
+#include "sync.h"
 
 /**
  * Chirp function
@@ -170,7 +171,7 @@ extern "C" {
 // takes ~9us to ~15us
 void PWM0_IRQHandler(void){
   // time information
-  long now = micros();
+  long now = sync_micros();
 
   static uint16_t sampleIdx = 0;
   

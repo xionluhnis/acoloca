@@ -8,6 +8,7 @@
 #include "pulse.h"
 #define sample_update pulse_update
 #endif
+#include "sync.h"
 
 #define SAADC_USE_EVENTS 1
 #define SAADC_ASAP 0
@@ -220,7 +221,7 @@ void SAADC_IRQHandler(void){
     // NRF_GPIO->OUTSET = 1 << A3;
     // NRF_GPIO->OUT ^= 1 << A3;
 
-    unsigned long now = micros();
+    unsigned long now = sync_micros();
 
     // get sample
     uint8_t sample = saadc_buffer;

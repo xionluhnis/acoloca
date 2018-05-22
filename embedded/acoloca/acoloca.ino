@@ -94,6 +94,7 @@ void reset_to_idle(){
     Serial.print(pulse_count2, DEC);
     Serial.println(" samples");
 
+    /*
     for(int i = 0; i < 2000; ++i){
           Serial.print(pulse_samples[i], DEC);
           Serial.print(" ");
@@ -104,6 +105,7 @@ void reset_to_idle(){
           Serial.print(" ");
     }
     Serial.println();
+    */
   }
 
   // restart listening for sync
@@ -117,7 +119,7 @@ void reset_to_idle(){
 /**************************************************************************/
 void loop()
 {
-  unsigned long now = micros();
+  unsigned long now = sync_micros();
   if(curr_state != IDLE){
 
     if(curr_state == LISTENING){
@@ -201,16 +203,25 @@ void loop()
 
       case 'd':
         // send debug information
-        for(int i = 0; i < 2000; ++i)
-          Serial.println(pulse_samples[i], DEC);
-          
+        for(int i = 0; i < 2000; ++i){
+          Serial.print(pulse_samples[i], DEC);
+          Serial.print(" ");
+        }
+        Serial.println();
         break;
 
         case 'D':
         // send debug information
-        for(int i = 0; i < 2000; ++i)
-          Serial.println(pulse_times[i], DEC);
-          
+        for(int i = 0; i < 2000; ++i){
+          Serial.print(pulse_times[i], DEC);
+          Serial.print(" ");
+        }
+        Serial.println();
+        break;
+
+      case 'm':
+        Serial.print("Time: ");
+        Serial.println(sync_micros());
         break;
 
     }
@@ -221,7 +232,7 @@ void loop()
 void on_sync_start() {
   // possible RACE condition with state change from UART?
   if(curr_state == IDLE){
-    state_start = micros();
+    state_start = sync_micros();
     curr_state = LISTENING;
     saadc_start(&reset_to_idle);
   }
@@ -229,7 +240,7 @@ void on_sync_start() {
 
 void on_sync_end() {
   // record starting time
-  sync_timestamp = micros();
+  sync_timestamp = sync_micros();
   ++sync_count;
 #if defined(USE_PULSE)
   pulse_init(sync_timestamp);

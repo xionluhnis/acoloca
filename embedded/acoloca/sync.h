@@ -31,7 +31,36 @@ void sync_setup(void (*callback)()) {
 
   // use listen configuration by default
   NRF_GPIOTE->CONFIG[0] = sync_config_listen;
-  
+
+
+  // setup precise timing
+  // timer3 accumulate microseconds
+  // timer2 pushes microseconds from timer3 to its cc register
+  NRF_TIMER2->PRESCALER = 0;   // 16 MHz base frequency
+  NRF_TIMER2->MODE = 0;        // Timer
+  NRF_TIMER2->BITMODE = 0;     // 16 Bit timer
+  NRF_TIMER2->CC[0] = 16;      // roll back every microsecond
+  NRF_TIMER2->SHORTS = 1;      // CC0 clears counter
+  NRF_TIMER2->TASKS_CLEAR = 1; // clear timer for now
+
+  NRF_TIMER3->PRESCALER = 4;   // 1 MHz base frequency
+  NRF_TIMER3->MODE = 0;
+  NRF_TIMER3->BITMODE = 3;     // 32 Bit timer
+  NRF_TIMER3->TASKS_CLEAR = 1;
+
+  // setup PPI
+  NRF_PPI->CH[1].EEP = (uint32_t)&NRF_TIMER2->EVENTS_COMPARE[0];
+  NRF_PPI->CH[1].TEP = (uint32_t)&NRF_TIMER3->TASKS_CAPTURE[0];
+  NRF_PPI->CHENSET   = PPI_CHEN_CH1_Enabled << PPI_CHEN_CH1_Pos;
+
+  // start us timer
+  NRF_TIMER2->TASKS_START = 1;
+  NRF_TIMER3->TASKS_START = 1;
+}
+
+typedef unsigned long timestamp_t;
+timestamp_t sync_micros() {
+  return NRF_TIMER3->CC[0];
 }
 
 void sync_start(){

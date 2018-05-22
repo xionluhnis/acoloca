@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "filters.h"
 #include "sine.h"
+#include "sync.h"
 
 /**
  * Pulse function: decreasing ramp
@@ -120,7 +121,7 @@ extern "C" {
 void PWM0_IRQHandler(void){
 
   // time information
-  long now = micros();
+  timestamp_t now = sync_micros();
   
   // check the event is a period end
   //NRF_GPIO->OUTSET = 1 << A1;
@@ -171,10 +172,10 @@ int16_t     pulse_value = 0;
 uint16_t    pulse_count1 = 0, pulse_count2 = 0;
 
 FilterBuffer<timestamp_t, 10> timestamps;
-volatile bool timestamp_new = false;
+bool timestamp_new = false;
 
 void pulse_init(timestamp_t now){
-  // Serial.println("pulse init");
+  Serial.println("pulse init");
   pulse_sync_start = now;
   pulse_time  = 0;
   pulse_value = 0;

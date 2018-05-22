@@ -68,6 +68,11 @@ struct BiquadFilter {
     return BiquadFilter();
   }
 
+  void reset() { 
+    y[0] = x[0];
+    y[1] = y[0];
+  }
+
   void debug() {
     Serial.print("A: ");
     for(uint8_t i = 0; i < 3; ++i){

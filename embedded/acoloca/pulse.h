@@ -1,37 +1,25 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 #pragma once
 
+#include <Arduino.h>
+#include "filters.h"
 #include "sine.h"
 
 /**
- * Chirp function
- *  s(t) = sin(2pi f(t) f)
- *  f(t) = f0 + (f1-f0) t
- *  
- *  => s(t) = sin(2pi (f0 + (f1-f0)t) t )
+ * Pulse function: decreasing ramp
  */
-
 typedef struct Chirp {
   // frequency information
-  const uint16_t  f_start;
-  const uint16_t  f_end;
-  const int16_t   f_delta;
-  const uint32_t  f_clock;
-  // dds information
+  const uint16_t factor = 2;
+  const uint16_t shift  = 1;
+  // clock information
+  const unsigned long f_clock;
   const double  ref_clk;
-  const double  n_samples;
   const double  ref_period;
   // pwm cycle information
   const uint16_t      cycle_length;
   volatile uint16_t   cycle_duty;
-  const uint32_t      cycles_per_chirp;
-  const uint32_t      cycles_per_half_chirp;
   const unsigned long cycle_duration;
-  // dds phase information
-  volatile unsigned long phaccu;
-  volatile unsigned long tuning_word;
-  const unsigned long    tuning_word_first;
-  const unsigned long    tuning_word_delta;
   // duration information
   const uint32_t  duration_on;  
   const uint32_t  duration_off; 
@@ -39,17 +27,11 @@ typedef struct Chirp {
   // internal
   volatile long   start_us;
 
-  Chirp(uint16_t f0, uint16_t f1, uint32_t dur, uint32_t fc, double mea_clk = 0)
-  : f_start(f0), f_end(f1), f_delta(f1 - f0), f_clock(fc),  // freq
-    ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2),       // dds reference clock, defaults to 31250Hz for 16MHz clock
-    n_samples(pow(2, 32)), ref_period(1e6/ref_clk),         // dds samples
+  Chirp(uint32_t dur, double fc, double mea_clk = 0)
+  : f_clock(fc),
+    ref_clk(mea_clk ? mea_clk : fc / SEQ_LENGTH / 2), ref_period(1e6/ref_clk),
     cycle_length(SEQ_LENGTH), cycle_duty(0),                // pwm
-    cycles_per_chirp(ceil(ref_clk * float(dur / 1e6))),
-    cycles_per_half_chirp(cycles_per_chirp/2),
     cycle_duration(round(double(1e6) / (dur * ref_clk))),
-    tuning_word(n_samples * f0 / ref_clk),
-    tuning_word_first(tuning_word),
-    tuning_word_delta(round(f_delta / (ref_clk * dur / 1e6) * n_samples / ref_clk * 2)),
     duration_on(dur), duration_off(dur),                    // duration
     duration(duration_on + duration_off)
   {
@@ -72,40 +54,9 @@ typedef struct Chirp {
 } chirp_t;
 
 // chirp instance
-chirp_t chirp(1100, 1000, 1e6, 16000000, 30920);
-
-void pll_setup();
+chirp_t chirp(1e6, 16000000, 30920);
 
 void sound_setup(){
-
-  Serial.println("Chirp info:");
-  #define CHIRP_INFO(name) {Serial.print("- " #name ": "); Serial.println(chirp.name);}
-  {
-    CHIRP_INFO(f_start);
-    CHIRP_INFO(f_end);
-    CHIRP_INFO(f_delta);
-    CHIRP_INFO(f_clock);
-    CHIRP_INFO(ref_clk);
-    CHIRP_INFO(n_samples);
-    CHIRP_INFO(ref_period);
-    CHIRP_INFO(cycle_length);
-    CHIRP_INFO(cycles_per_chirp);
-    CHIRP_INFO(cycle_duration);
-    CHIRP_INFO(duration_on);
-    CHIRP_INFO(duration_off);
-    CHIRP_INFO(duration);
-    CHIRP_INFO(tuning_word);
-    CHIRP_INFO(tuning_word_delta);
-  }
-
-  /*
-  Serial.println("Initializing GPIO");
-  // NRF_GPIO->DIRSET = 1 << A1; // IRQ timing (to check sanity)
-  // NRF_GPIO->DIRSET = 1 << A2; // phase 8-bit overflow (to measure frequency)
-  // NRF_GPIO->DIRSET = 1 << A3; // real pwm frequency (to tune reference frequency)
-  // NRF_GPIO->DIRSET = 1 << A4; // chirp duration
-  */
-
   Serial.println("Initializing PWM");
   NRF_PWM0->PSEL.OUT[0] = (A1 << PWM_PSEL_OUT_PIN_Pos) | (PWM_PSEL_OUT_CONNECT_Connected << PWM_PSEL_OUT_CONNECT_Pos);
   NRF_PWM0->ENABLE = (PWM_ENABLE_ENABLE_Enabled << PWM_ENABLE_ENABLE_Pos);
@@ -136,8 +87,6 @@ void sound_setup(){
   NVIC_SetPriority(PWM0_IRQn, 0); //low priority
   NVIC_ClearPendingIRQ(PWM0_IRQn);
   NVIC_EnableIRQ(PWM0_IRQn);
-
-  pll_setup();
 }
 
 void (*chirp_start_callback)();
@@ -150,7 +99,7 @@ void sound_start(void (*start_callback)(), void (*end_callback)()) {
   chirp_end_callback = end_callback;
   
   Serial.println("Starting chirp");
-  chirp.cycle_duty = sin256[0];
+  chirp.cycle_duty = 255; // sin256[0];
   chirp.start_us = 0; // micros();
   
   NRF_PWM0->TASKS_SEQSTART[0] = 1;
@@ -169,10 +118,9 @@ extern "C" {
 
 // takes ~9us to ~15us
 void PWM0_IRQHandler(void){
+
   // time information
   long now = micros();
-
-  static uint16_t sampleIdx = 0;
   
   // check the event is a period end
   //NRF_GPIO->OUTSET = 1 << A1;
@@ -180,57 +128,11 @@ void PWM0_IRQHandler(void){
   if(NRF_PWM0->EVENTS_PWMPERIODEND != 0){
     NRF_PWM0->EVENTS_PWMPERIODEND = 0; // clear interrupt
 
-    // time in chirp
-    long dt = now - chirp.start_us;
-
-    // chirp on/off
-    if(dt < chirp.duration_on){
-
-      // 32bits phase accumulator
-      if(sampleIdx++ >= chirp.cycles_per_half_chirp){
-        chirp.tuning_word -= chirp.tuning_word_delta;
-      } else {
-        chirp.tuning_word += chirp.tuning_word_delta;
-      }
-      chirp.phaccu += chirp.tuning_word;
-  
-      // use most significant 8 bits as frequency information
-      uint8_t sine_idx = chirp.phaccu >> 24;
-      
-      /*
-      // frequency debug
-      static uint8_t last_idx = 0;
-      if(sine_idx < last_idx){
-      // NRF_GPIO->OUT ^= 1 << A2; // toggle to get period / frequency
-      }
-      last_idx = sine_idx;
-      */
-  
-      // update duty cycle from sine table
-      chirp.cycle_duty = sin256[sine_idx];
-
-      // update DMA
+    chirp.cycle_duty = max(0.0f, float(chirp.cycle_duty) / chirp.factor - chirp.shift);
+    if(chirp.cycle_duty > 0){
       NRF_PWM0->TASKS_SEQSTART[0] = 1;
-      
     } else {
-
-      // reset chirp
-      chirp.phaccu = 0;
-      chirp.tuning_word = chirp.tuning_word_first;
-      sampleIdx = 0;
-
-      // stop chirp
-      chirp.cycle_duty = 0; //  | (1 << 15);
       sound_end();
-      
-      // out of chirp
-      if(now + chirp.ref_period / 2 >= chirp.start_us + chirp.duration){
-        // chirp.start_us = now;
-        // restart next period?
-        // debug signal
-        // NRF_GPIO->OUT ^= 1 << A4;
-      }
-      
     }
     
   } else if(NRF_PWM0->EVENTS_SEQSTARTED[0] != 0) {
@@ -242,14 +144,56 @@ void PWM0_IRQHandler(void){
 
       // set chirp start
       chirp.start_us = now;
-      
-      // reset chirp
-      chirp.phaccu = 0;
-      chirp.tuning_word = chirp.tuning_word_first;
-      sampleIdx = 0;
     }
   }
   //NRF_GPIO->OUTCLR = 1 << A1;
 }
 
+}
+
+
+// pulse decoding
+typedef unsigned long timestamp_t;
+
+constexpr const float RANGE_DISTANCE_MAX = 10;
+constexpr const float RANGE_DISTANCE_MIN = 0.02;
+
+
+Difference<int16_t> pulse_delta;
+
+timestamp_t pulse_sync_start = 0;
+timestamp_t pulse_time  = 0;
+volatile int16_t     pulse_value = 0;
+
+FilterBuffer<timestamp_t, 10> timestamps;
+volatile bool timestamp_new = false;
+
+void pulse_init(timestamp_t now){
+  pulse_sync_start = now;
+  pulse_time  = 0;
+  pulse_value = 0;
+}
+
+bool pulse_update(uint8_t sample, timestamp_t now){
+
+  timestamp_t time_delta = now - pulse_sync_start;
+  float curr_dist = 343e6 / time_delta;
+
+  int16_t delta = abs(pulse_delta(int16_t(sample)));
+  
+  if(curr_dist <= RANGE_DISTANCE_MIN)
+    return false; // skip
+    
+  if(delta > pulse_value){
+    pulse_time = now;
+    pulse_value = delta;
+  }
+
+  if(curr_dist >= RANGE_DISTANCE_MAX){
+    timestamps.push(pulse_time);
+    timestamp_new = true;
+    return true;
+  } else {
+    return false;
+  }
 }

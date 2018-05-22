@@ -1,12 +1,12 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 #pragma once
 
-#include "biquad.h"
-#include "buffer.h"
-#include "diff.h"
-#include "fir.h"
-#include "movavg.h"
-#include "norm.h"
-#include "wmovavg.h"
+#include "filters/biquad.h"
+#include "filters/buffer.h"
+#include "filters/diff.h"
+#include "filters/fir.h"
+#include "filters/movavg.h"
+#include "filters/norm.h"
+#include "filters/wmovavg.h"
 
 

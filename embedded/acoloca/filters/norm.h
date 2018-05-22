@@ -11,8 +11,8 @@
 #endif
 
 // #if USE_FIXED_POINT
-#include "fixed/FixedPoints.h"
-#include "fixed/FixedPointsCommon.h"
+#include "../fixed/FixedPoints.h"
+#include "../fixed/FixedPointsCommon.h"
 
 FIXED_POINTS_BEGIN_NAMESPACE
 using SQ2x13 = SFixed<2, 13>;
@@ -51,6 +51,10 @@ struct NormalizationFilter {
 
   NormalizationFilter() {
     count[0] = Size;
+  }
+
+  InputType range() {
+    return max_value - min_value;
   }
 
   OutputType operator()(const InputType &x){

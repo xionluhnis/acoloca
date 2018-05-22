@@ -17,8 +17,10 @@ constexpr const float SAMPLE_PERIOD = 1.0 / SAMPLE_RATE;
 constexpr const double N_SAMPLES = 1ULL << 32; // /!\ needs 1ULL, 1UL overflows
 constexpr const unsigned long TUNING_DELTA = N_SAMPLES * REF_FREQ / SAMPLE_RATE;
 constexpr const float LOCK_THRESHOLD = 0.2;
+constexpr const uint16_t NORM_SAMPLES = ceil(3 * SAMPLE_RATE / REF_FREQ);
 
 // filters
+NormalizationFilter<NORM_SAMPLES> norm_filter;
 BiquadFilter<float> output_lowpass = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
 BiquadFilter<float> lock1_lowpass  = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
 BiquadFilter<float> lock2_lowpass  = BiquadFilter<float>::lowpass(10, SAMPLE_RATE);
@@ -139,5 +141,16 @@ bool pll_demod(const timestamp_t &now){
   }
 
   return false;
+}
+
+bool pll_update(uint8_t sample, timestamp_t now){
+  // filter data (~2us, peaks at 6.5us)
+  float out = norm_filter(sample);
+  
+  // run PLL loop (4.6us)
+  pll_run(out);
+  
+  // demodulation (1.2us)
+  return pll_demod(now);
 }
 

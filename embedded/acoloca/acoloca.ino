@@ -4,11 +4,21 @@
 #define CLOCK_OFF(pin) { NRF_GPIO->OUTCLR = 1 << (pin); }
 
 #define USE_FIXED_POINT 0
+#define USE_PULSE
 
 #include <Arduino.h>
-#include "chirp.h"
+
 #include "filters.h"
+
+#if defined(USE_CHIRP)
+#include "chirp.h"
 #include "pll.h"
+#elif defined(USE_PULSE)
+#include "pulse.h"
+#else
+error "You must define a type of sound: USE_CHIRP or USE_PULSE"
+#endif
+
 #include "saadc.h"
 #include "sync.h"
 
@@ -32,18 +42,14 @@ void setup()
   Serial.println("################");
   
   Serial.println("Generating sin/cos tables");
-  init_sinetables(0.1);
+  init_sinetables(1);
 
   Serial.println("Initializing Chirp/PWM");
-  chirp_setup();
+  sound_setup();
 
   // initialize SAADC
   Serial.println("Initializing SAADC");
   saadc_setup();
-
-  // initialize pll
-  Serial.println("Initializing PLL");
-  pll_setup();
 
   // initialize synchronization
   Serial.println("Initializing Sync");
@@ -107,7 +113,7 @@ void loop()
       if(curr_state == LISTENING)
         saadc_end();
       else if(curr_state == EMITTING)
-        chirp_end();
+        sound_end();
       reset_to_idle();
 
       Serial.println("Switched back to idle");
@@ -135,7 +141,7 @@ void loop()
         
         // switch to chirp mode
         curr_state = EMITTING;
-        chirp_start(&sync_end, &reset_to_idle);
+        sound_start(&sync_end, &reset_to_idle);
         state_start = now;
         break;
         
@@ -151,23 +157,16 @@ void loop()
       case 'g':
       case '.':
         // send timing information
-        if(last_state == EMITTING){
-          Serial.println("Emitting time:");
-          Serial.println(chirp.start_us, DEC);
-        }else if(last_state == LISTENING){
-          Serial.println("Receiving time:");
-          Serial.print("- start: ");
-          Serial.println(sync_timestamp, DEC);
-          Serial.print("- middle: ");
-          Serial.println(timestamps.first(), DEC);
-          Serial.print("- delta: ");
-          Serial.println(timestamps.first() - sync_timestamp, DEC);
-          Serial.print("- valid: ");
-          Serial.println(timestamp_new ? "true" : "false");
-          timestamp_new = false;
-        } else {
-          Serial.println("Only idle");
-        }
+        Serial.println("Receiving time:");
+        Serial.print("- start: ");
+        Serial.println(sync_timestamp, DEC);
+        Serial.print("- time: ");
+        Serial.println(timestamps.first(), DEC);
+        Serial.print("- delta: ");
+        Serial.println(timestamps.first() - sync_timestamp, DEC);
+        Serial.print("- valid: ");
+        Serial.println(timestamp_new ? "true" : "false");
+        timestamp_new = false;
         break;
 
       case 't':
@@ -191,6 +190,9 @@ void on_sync_start() {
   if(curr_state == IDLE){
     state_start = micros();
     curr_state = LISTENING;
+#if defined(USE_PULSE)
+    pulse_init(state_start);
+#endif
     saadc_start(&reset_to_idle);
   }
 }

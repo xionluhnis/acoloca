@@ -1,7 +1,13 @@
 // Alexandre Kaspar <akaspar@mit.edu>
 #pragma once
 
+#if defined(USE_CHIRP)
 #include "pll.h"
+#define sample_update pll_update
+#elif defined(USE_PULSE)
+#include "pulse.h"
+#define sample_update pulse_update
+#endif
 
 #define SAADC_USE_EVENTS 1
 #define SAADC_ASAP 0
@@ -10,15 +16,11 @@
 // constants
 constexpr const unsigned long DESIRED_SAMPLE_RATE = 60000; // 100kHz
 constexpr const unsigned long ACQUISITION_TIME    = SAADC_CH_CONFIG_TACQ_10us;
-constexpr const uint16_t NORM_SAMPLES = ceil(3 * SAMPLE_RATE / REF_FREQ);
 
 // data
 uint16_t saadc_buffer = 0;
 volatile uint8_t  saadc_sample = 0;
 volatile uint32_t saadc_sample_count = 0;
-
-// filters
-NormalizationFilter<NORM_SAMPLES> norm_filter;
 
 /**
  * Setup SAADC registers
@@ -215,29 +217,16 @@ void SAADC_IRQHandler(void){
     // NRF_GPIO->OUT ^= 1 << A3;
 
     unsigned long now = micros();
-    
-    NRF_SAADC->EVENTS_END = 0; // clear interrupt
 
     // get sample
     uint8_t sample = saadc_buffer;
 
-    // filter data (~2us, peaks at 6.5us)
-    float out = norm_filter(sample);
-    /*
-    if(out > 0.2)
-      NRF_GPIO->OUTSET = 1 << A3;
-    else
-      NRF_GPIO->OUTCLR = 1 << A3;
-    */
-    
-    // run PLL loop (4.6us)
-    pll_run(out);
-    
-    // demodulation (1.2us)
-    if(pll_demod(now)){
-      // we can stop listening
+    // update depends on method
+    if(sample_update(sample, now)){
       saadc_end();
     }
+    // clear interrupt only if there's more
+    NRF_SAADC->EVENTS_END = 0;
 
     // ask for more samples
     // NRF_SAADC->TASKS_START = 0x01UL;

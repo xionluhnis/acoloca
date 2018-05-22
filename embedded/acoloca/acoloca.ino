@@ -42,7 +42,7 @@ void setup()
   Serial.println("################");
   
   Serial.println("Generating sin/cos tables");
-  init_sinetables(1);
+  init_sinetables(0.1);
 
   Serial.println("Initializing Chirp/PWM");
   sound_setup();
@@ -73,6 +73,10 @@ enum State {
 volatile State curr_state = IDLE;
 volatile State last_state = IDLE;
 
+unsigned long state_start = 0;
+unsigned long sync_timestamp = 0;
+unsigned long sync_count = 0;
+
 void reset_to_idle(){
   // might be called multiple times
   if(curr_state == IDLE)
@@ -82,13 +86,29 @@ void reset_to_idle(){
   last_state = curr_state;
   curr_state = IDLE;
 
+  // display timing automatically if available
+  if(last_state == LISTENING && timestamp_new){
+    Serial.print("Time delta: ");
+    Serial.print(timestamps.first() - sync_timestamp, DEC);
+    Serial.print(" of ");
+    Serial.print(pulse_count2, DEC);
+    Serial.println(" samples");
+
+    for(int i = 0; i < 2000; ++i){
+          Serial.print(pulse_samples[i], DEC);
+          Serial.print(" ");
+    }
+    Serial.println();
+    for(int i = 0; i < 2000; ++i){
+          Serial.print(pulse_times[i] - pulse_times[0], DEC);
+          Serial.print(" ");
+    }
+    Serial.println();
+  }
+
   // restart listening for sync
   sync_listen(&on_sync_end);
 }
-
-unsigned long state_start = 0;
-unsigned long sync_timestamp = 0;
-unsigned long sync_count = 0;
 
 /**************************************************************************/
 /*!
@@ -179,6 +199,19 @@ void loop()
         Serial.println(sync_count, DEC);
         break;
 
+      case 'd':
+        // send debug information
+        for(int i = 0; i < 2000; ++i)
+          Serial.println(pulse_samples[i], DEC);
+          
+        break;
+
+        case 'D':
+        // send debug information
+        for(int i = 0; i < 2000; ++i)
+          Serial.println(pulse_times[i], DEC);
+          
+        break;
 
     }
     
@@ -190,9 +223,6 @@ void on_sync_start() {
   if(curr_state == IDLE){
     state_start = micros();
     curr_state = LISTENING;
-#if defined(USE_PULSE)
-    pulse_init(state_start);
-#endif
     saadc_start(&reset_to_idle);
   }
 }
@@ -201,6 +231,9 @@ void on_sync_end() {
   // record starting time
   sync_timestamp = micros();
   ++sync_count;
+#if defined(USE_PULSE)
+  pulse_init(sync_timestamp);
+#endif
 }
 
 

@@ -155,43 +155,80 @@ void PWM0_IRQHandler(void){
 // pulse decoding
 typedef unsigned long timestamp_t;
 
+constexpr const float SPEED_OF_SOUND = 343.0f;
 constexpr const float RANGE_DISTANCE_MAX = 10;
-constexpr const float RANGE_DISTANCE_MIN = 0.02;
+constexpr const float RANGE_DISTANCE_MIN = 0.020;
+constexpr const unsigned long RANGE_TIME_MIN = (RANGE_DISTANCE_MIN / SPEED_OF_SOUND) * 1e6;
+constexpr const unsigned long RANGE_TIME_MAX = (RANGE_DISTANCE_MAX / SPEED_OF_SOUND) * 1e6;
 
 
 Difference<int16_t> pulse_delta;
 
+bool        pulse_started = false;
 timestamp_t pulse_sync_start = 0;
 timestamp_t pulse_time  = 0;
-volatile int16_t     pulse_value = 0;
+int16_t     pulse_value = 0;
+uint16_t    pulse_count1 = 0, pulse_count2 = 0;
 
 FilterBuffer<timestamp_t, 10> timestamps;
 volatile bool timestamp_new = false;
 
 void pulse_init(timestamp_t now){
+  // Serial.println("pulse init");
   pulse_sync_start = now;
   pulse_time  = 0;
   pulse_value = 0;
+  pulse_started = true;
+  pulse_count1 = pulse_count2 = 0;
 }
 
-bool pulse_update(uint8_t sample, timestamp_t now){
 
-  timestamp_t time_delta = now - pulse_sync_start;
-  float curr_dist = 343e6 / time_delta;
+int16_t pulse_samples[2000];
+timestamp_t pulse_times[2000];
 
-  int16_t delta = abs(pulse_delta(int16_t(sample)));
-  
-  if(curr_dist <= RANGE_DISTANCE_MIN)
+
+bool pulse_update(int16_t sample, timestamp_t now){
+
+  int16_t delta = pulse_delta(sample);
+
+  if(!pulse_started || now <= pulse_sync_start)
     return false; // skip
+
+  ++pulse_count1;
+
+  // compute distance up to now
+  timestamp_t time_delta = now - pulse_sync_start;
+
+  if(time_delta <= RANGE_TIME_MIN)
+    return false; // skip
+
+  pulse_samples[pulse_count2 % 2000] = sample;
+  pulse_times[pulse_count2 % 2000] = now;
+
+  ++pulse_count2;
+
+  // Serial.print("sample="); Serial.println(sample, DEC);
+  // Serial.print("delta="); Serial.println(delta, DEC);
     
-  if(delta > pulse_value){
+  if(abs(delta) > abs(pulse_value)){
     pulse_time = now;
     pulse_value = delta;
   }
 
-  if(curr_dist >= RANGE_DISTANCE_MAX){
-    timestamps.push(pulse_time);
-    timestamp_new = true;
+  if(time_delta >= RANGE_TIME_MAX){
+    if(pulse_time > 0){
+      timestamps.push(pulse_time);
+      timestamp_new = true;
+    }
+
+    /*
+    Serial.print("pulse_value="); Serial.println(pulse_value, DEC);
+    Serial.print("now="); Serial.println(now, DEC);
+    Serial.print("pulse_time="); Serial.println(pulse_time, DEC);
+    */
+    
+    pulse_started = false;
+    // else we failed at detecting anything
     return true;
   } else {
     return false;

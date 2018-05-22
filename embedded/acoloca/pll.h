@@ -9,12 +9,13 @@
 typedef unsigned long timestamp_t;
 
 // constants
-constexpr const float PLL_GAIN = 0.1;
+constexpr const float PLL_GAIN = 1;
 constexpr const float REF_FREQ = 1050;
 constexpr const float REF_OMEGA = 2.0 * M_PI * REF_FREQ;
-constexpr const float SAMPLE_RATE = 60000; // 8704
+constexpr const float SAMPLE_RATE = 58.5e3; // 8704
 constexpr const float SAMPLE_PERIOD = 1.0 / SAMPLE_RATE;
 constexpr const double N_SAMPLES = 1ULL << 32; // /!\ needs 1ULL, 1UL overflows
+constexpr const double TUNING_MICRO_FACTOR = N_SAMPLES / 1e6 * REF_FREQ;
 constexpr const unsigned long TUNING_DELTA = N_SAMPLES * REF_FREQ / SAMPLE_RATE;
 constexpr const float LOCK_THRESHOLD = 0.2;
 constexpr const uint16_t NORM_SAMPLES = ceil(3 * SAMPLE_RATE / REF_FREQ);
@@ -58,22 +59,36 @@ void pll_setup() {
   lock1_lowpass.debug();
 }
 
+unsigned long last_pll_time = 0;
+
 /**
  * PLL loop iteration
  * 
  * @param input normalized input signal
  */
-void pll_run(float input){
+void pll_run(float input, timestamp_t now){
 
   // PLL (~3.8us)
   // NRF_GPIO->OUTSET = 1 << A2;
-  
   // pase detector and filters
   pll_loop_control = input * ref_signal * PLL_GAIN; // ~250ns
   pll_output = output_lowpass(pll_loop_control); // ~500ns
 
   // reference signal using phase accumulator (~400ns)
-  unsigned long tuning_word = TUNING_DELTA * (1.0f + pll_loop_control);
+  // compute precise tuning delta (for varying clocks)
+  /*timestamp_t dt = now - last_pll_time;
+  last_pll_time = now;
+  timestamp_t tuning_delta;
+  if(dt > 1000){
+    // very large time change
+    // => assume single period
+    tuning_delta = TUNING_DELTA;
+  } else {
+    tuning_delta = TUNING_MICRO_FACTOR * dt;
+  }
+  */
+  // compute phase
+  timestamp_t tuning_word = TUNING_DELTA * (1.0f + pll_loop_control);
   ref_phase_accu += tuning_word;
   uint8_t ref_phase_idx = ref_phase_accu >> 24;
   ref_signal = fsin256[ref_phase_idx];
@@ -148,7 +163,7 @@ bool pll_update(uint8_t sample, timestamp_t now){
   float out = norm_filter(sample);
   
   // run PLL loop (4.6us)
-  pll_run(out);
+  pll_run(out, now);
   
   // demodulation (1.2us)
   return pll_demod(now);

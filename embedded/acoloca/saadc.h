@@ -151,7 +151,11 @@ void saadc_setup() {
 
 void (*saadc_callback)();
 
+unsigned long saadc_count = 0;
+
 void saadc_start(void (*callback)()) {
+
+  saadc_count = 0;
 
   // store callback
   saadc_callback = callback;
@@ -221,12 +225,27 @@ void SAADC_IRQHandler(void){
     // get sample
     uint8_t sample = saadc_buffer;
 
+    NRF_GPIO->OUTSET = 1 << A3;
+
+    ++saadc_count;
+
     // update depends on method
     if(sample_update(sample, now)){
       saadc_end();
+      /*
+      Serial.print("End: ");
+      Serial.println(saadc_count, DEC);
+      Serial.print("pulse end: c1=");
+      Serial.print(pulse_count1, DEC);
+      Serial.print(", c2=");
+      Serial.println(pulse_count2, DEC);
+      */
+      saadc_count = 0;
     }
     // clear interrupt only if there's more
     NRF_SAADC->EVENTS_END = 0;
+
+    NRF_GPIO->OUTCLR = 1 << A3;
 
     // ask for more samples
     // NRF_SAADC->TASKS_START = 0x01UL;

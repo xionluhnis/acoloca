@@ -84,8 +84,8 @@ void GPIOTE_IRQHandler(void){
 
     } else {
       // triggered down
-      sync_onend_callback();
       sync_started = false;
+      sync_onend_callback();
     }
 
   }
